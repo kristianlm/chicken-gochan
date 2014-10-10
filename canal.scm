@@ -25,7 +25,7 @@
     (cond
      ((pair? rear)
       (set-cdr! rear new))
-     (else  ; sending to empty canal
+     (else ;; sending to empty canal
       (canal-front-set! chan new)
       (condition-variable-signal! (canal-condvar chan)))))
   (mutex-unlock! (canal-mutex chan)))
@@ -34,7 +34,7 @@
   (mutex-lock! (canal-mutex chan))
   (let ((front (canal-front chan)))
     (cond
-     ((null? front)  ; receiving from empty canal
+     ((null? front) ;; receiving from empty canal
       (mutex-unlock! (canal-mutex chan) (canal-condvar chan))
       (canal-receive chan))
      (else
