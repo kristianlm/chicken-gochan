@@ -16,7 +16,7 @@
 (define (canal-empty? chan)
   (null? (canal-front chan)))
 
-(define (canal-send! chan obj)
+(define (canal-send chan obj)
   (mutex-lock! (canal-mutex chan))
   (let ((new (list obj))
         (rear (canal-rear chan)))
@@ -29,13 +29,13 @@
       (condition-variable-signal! (canal-condvar chan)))))
   (mutex-unlock! (canal-mutex chan)))
 
-(define (canal-receive! chan)
+(define (canal-receive chan)
   (mutex-lock! (canal-mutex chan))
   (let ((front (canal-front chan)))
     (cond
      ((null? front)  ; receiving from empty canal
       (mutex-unlock! (canal-mutex chan) (canal-condvar chan))
-      (canal-receive! chan))
+      (canal-receive chan))
      (else
       (canal-front-set! chan (cdr front))
       (if (null? (cdr front))
