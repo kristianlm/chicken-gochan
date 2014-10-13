@@ -2,6 +2,8 @@
 ;; Copyright (c) 2012 Alex Shinn.  All rights reserved.
 ;; Copyright (c) 2014 Kristian Lein-Mathisen.  All rights reserved.
 ;; BSD-style license: http://synthcode.com/license.txt
+;;
+;; Inspired by channels from goroutines.
 
 (use srfi-18)
 
