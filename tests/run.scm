@@ -1,5 +1,5 @@
 
-(include "canal.scm")
+(include "gochan.scm")
 
 (use test)
 (test-group
