@@ -38,7 +38,7 @@
       (condition-variable-signal! (canal-condvar chan)))))
   (mutex-unlock! (canal-mutex chan)))
 
-(define (canal-receive chan)
+(define (canal-receive chan #!optional (closed (cut error "channel is closed" <>)))
   (mutex-lock! (canal-mutex chan))
   (let ((front (canal-front chan)))
     (cond
@@ -46,7 +46,7 @@
       (if (canal-closed? chan)
           (begin
             (mutex-unlock! (canal-mutex chan))
-            (error "cannel is closed" chan))
+            (closed chan))
           (begin
             (mutex-unlock! (canal-mutex chan) (canal-condvar chan))
             (canal-receive chan))))

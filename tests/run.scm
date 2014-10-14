@@ -16,4 +16,7 @@
  (test-error "errors on recving from closed and empty canal" (canal-receive c) )
  (test-error "still error (no deadlock)" (canal-receive c) )
 
+ (test "on-closed called" 'nevermind (canal-receive c (lambda (c) 'nevermind)))
+ (test "on-closed unlocks mutex" 'nevermind (canal-receive c (lambda (c) 'nevermind)))
+
  )
