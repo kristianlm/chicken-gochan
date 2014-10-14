@@ -1,4 +1,4 @@
-;; canal.scm -- thread-safe channel (FIFO) library
+;; gochan.scm -- thread-safe channel (FIFO) library
 ;; Copyright (c) 2012 Alex Shinn.  All rights reserved.
 ;; Copyright (c) 2014 Kristian Lein-Mathisen.  All rights reserved.
 ;; BSD-style license: http://synthcode.com/license.txt
@@ -7,57 +7,57 @@
 
 (use srfi-18)
 
-(define-record-type canal
-  (%make-canal mutex condvar front rear closed?)
-  canal?
-  (mutex canal-mutex canal-mutex-set!)
-  (condvar canal-condvar canal-condvar-set!)
-  (front canal-front canal-front-set!)
-  (rear canal-rear canal-rear-set!)
-  (closed? canal-closed? canal-closed-set!))
+(define-record-type gochan
+  (%make-gochan mutex condvar front rear closed?)
+  gochan?
+  (mutex gochan-mutex gochan-mutex-set!)
+  (condvar gochan-condvar gochan-condvar-set!)
+  (front gochan-front gochan-front-set!)
+  (rear gochan-rear gochan-rear-set!)
+  (closed? gochan-closed? gochan-closed-set!))
 
-(define (make-canal)
-  (%make-canal (make-mutex) (make-condition-variable) '() '() #f))
+(define (make-gochan)
+  (%make-gochan (make-mutex) (make-condition-variable) '() '() #f))
 
-(define (canal-empty? chan)
-  (null? (canal-front chan)))
+(define (gochan-empty? chan)
+  (null? (gochan-front chan)))
 
-(define (canal-send chan obj)
-  (mutex-lock! (canal-mutex chan))
-  (when (canal-closed? chan)
-    (begin (mutex-unlock! (canal-mutex chan))
-           (error "cannot send to closed canal" chan)))
+(define (gochan-send chan obj)
+  (mutex-lock! (gochan-mutex chan))
+  (when (gochan-closed? chan)
+    (begin (mutex-unlock! (gochan-mutex chan))
+           (error "cannot send to closed gochan" chan)))
   (let ((new (list obj))
-        (rear (canal-rear chan)))
-    (canal-rear-set! chan new)
+        (rear (gochan-rear chan)))
+    (gochan-rear-set! chan new)
     (cond
      ((pair? rear)
       (set-cdr! rear new))
-     (else ;; sending to empty canal
-      (canal-front-set! chan new)
-      (condition-variable-signal! (canal-condvar chan)))))
-  (mutex-unlock! (canal-mutex chan)))
+     (else ;; sending to empty gochan
+      (gochan-front-set! chan new)
+      (condition-variable-signal! (gochan-condvar chan)))))
+  (mutex-unlock! (gochan-mutex chan)))
 
-(define (canal-receive chan #!optional (closed (cut error "channel is closed" <>)))
-  (mutex-lock! (canal-mutex chan))
-  (let ((front (canal-front chan)))
+(define (gochan-receive chan #!optional (closed (cut error "channel is closed" <>)))
+  (mutex-lock! (gochan-mutex chan))
+  (let ((front (gochan-front chan)))
     (cond
-     ((null? front) ;; receiving from empty canal
-      (if (canal-closed? chan)
+     ((null? front) ;; receiving from empty gochan
+      (if (gochan-closed? chan)
           (begin
-            (mutex-unlock! (canal-mutex chan))
+            (mutex-unlock! (gochan-mutex chan))
             (closed chan))
           (begin
-            (mutex-unlock! (canal-mutex chan) (canal-condvar chan))
-            (canal-receive chan))))
+            (mutex-unlock! (gochan-mutex chan) (gochan-condvar chan))
+            (gochan-receive chan))))
      (else
-      (canal-front-set! chan (cdr front))
+      (gochan-front-set! chan (cdr front))
       (if (null? (cdr front))
-          (canal-rear-set! chan '()))
-      (mutex-unlock! (canal-mutex chan))
+          (gochan-rear-set! chan '()))
+      (mutex-unlock! (gochan-mutex chan))
       (car front)))))
 
-(define (canal-close c)
-  (mutex-lock! (canal-mutex c))
-  (canal-closed-set! c #t)
-  (mutex-unlock! (canal-mutex c)))
+(define (gochan-close c)
+  (mutex-lock! (gochan-mutex c))
+  (gochan-closed-set! c #t)
+  (mutex-unlock! (gochan-mutex c)))
