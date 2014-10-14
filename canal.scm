@@ -43,9 +43,13 @@
   (let ((front (canal-front chan)))
     (cond
      ((null? front) ;; receiving from empty canal
-      (when (canal-closed? chan) (error "cannel is closed" chan))
-      (mutex-unlock! (canal-mutex chan) (canal-condvar chan))
-      (canal-receive chan))
+      (if (canal-closed? chan)
+          (begin
+            (mutex-unlock! (canal-mutex chan))
+            (error "cannel is closed" chan))
+          (begin
+            (mutex-unlock! (canal-mutex chan) (canal-condvar chan))
+            (canal-receive chan))))
      (else
       (canal-front-set! chan (cdr front))
       (if (null? (cdr front))
