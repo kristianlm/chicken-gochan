@@ -30,7 +30,7 @@
   (mutex-lock! (gochan-mutex chan))
   (when (gochan-closed? chan)
     (begin (mutex-unlock! (gochan-mutex chan))
-           (error "cannot send to closed gochan" chan)))
+           (error "gochan closed" chan)))
   (let ((new (list obj))
         (rear (gochan-rear chan)))
     (gochan-rear-set! chan new)
