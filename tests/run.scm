@@ -1,4 +1,4 @@
-(use gochan test)
+(use gochan test srfi-1 srfi-13)
 
 (test-group
  "simple gochan"
@@ -6,16 +6,18 @@
  (gochan-send c 'one)
  (test "synchronous recv" 'one (gochan-receive c))
  (gochan-send c 'two)
+ (gochan-send c 'three)
  (gochan-close c)
  (test "closed?" #t (gochan-closed? c))
  (test-error "send to closed gochan fails" (gochan-send c 'three))
 
- (test "buffered closed gochan" 'two (gochan-receive c) )
- (test-error "errors on recving from closed and empty gochan" (gochan-receive c) )
- (test-error "still error (no deadlock)" (gochan-receive c) )
+ (test "closed channel keeps buffer" 'two     (gochan-receive c))
+ (test "gochan-receive*"             '(three) (gochan-receive* c))
 
- (test "on-closed called" 'nevermind (gochan-receive c (lambda (c) 'nevermind)))
- (test "on-closed unlocks mutex" 'nevermind (gochan-receive c (lambda (c) 'nevermind)))
+ (test-error "errors on recving from closed and empty gochan" (gochan-receive c) )
+
+ (test "gochan-receive* #f when closed" #f (gochan-receive* c))
+ (test "on-closed unlocks mutex"        #f (gochan-receive* c))
 
  )
 
@@ -26,8 +28,8 @@
  (define channel (make-gochan))
  (define result (make-gochan))
  (define (process) (gochan-send result (gochan-receive channel)))
- (define t1 (thread-start! (make-thread (lambda () (process)))))
- (define t2 (thread-start! (make-thread (lambda () (process)))))
+ (define t1 (thread-start! (make-thread process "tst1")))
+ (define t2 (thread-start! (make-thread process "tst2")))
 
  (thread-yield!) ;; make both t1 and t2 wait on condvar
 
@@ -42,9 +44,19 @@
 (test-group
  "gochan-for-each"
 
- (define ch (make-gochan))
- (define t (thread-start! (lambda () (with-output-to-string (lambda () (gochan-for-each ch display))))))
- (gochan-send ch "a")
- (gochan-send ch "b")
- (gochan-close ch)
- (test "ab" (thread-join! t)))
+ (define c (make-gochan))
+ (define (process)
+   (with-output-to-string
+     (lambda () (gochan-for-each c
+                            (lambda (x)
+                              (display x)
+                              (thread-sleep! 1))))))
+ (define workers (map thread-start! (make-list 4 process)))
+ (gochan-send c "a")
+ (gochan-send c "b")
+ (gochan-send c "c")
+ (gochan-close c)
+
+ (test "for-each multiple workers"
+       3
+       (string-length (apply conc (map thread-join! workers)))))
