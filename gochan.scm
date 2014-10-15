@@ -21,8 +21,10 @@
 (define (semaphore-open! cv)  (condition-variable-specific-set! cv #f))
 (define (semaphore-open? cv)  (eq? #f (condition-variable-specific cv)))
 
-;; make a binary open/closed semaphore. default state is closed. unsed
-;; interchangible with condvar.
+;; make a binary open/closed semaphore. default state is closed.
+;; actually a condition-variable which can be signalled. we need the
+;; state a semaphore provides for guarantees of the sender-end
+;; "awaking" the receiving end.
 (define (make-semaphore name)
   (let ((cv (make-condition-variable name)))
     (semaphore-close! cv)
@@ -71,7 +73,7 @@
     (let loop ((condvars (gochan-condvars chan)))
       (cond ((pair? condvars)
              (if (semaphore-signal! (car condvars))
-                 ;; signalled! remove from signal list
+                 ;; signalled! remove from semaphore list
                  (gochan-condvars-set! chan (cdr condvars))
                  ;; not signalled, ignore and remove (someone else
                  ;; signalled)
