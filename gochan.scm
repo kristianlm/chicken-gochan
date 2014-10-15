@@ -146,3 +146,10 @@
            (lambda (msg)
              (proc (car msg))
              (loop))))))
+
+(define (gochan-fold chans proc initial)
+  (let loop ((state initial))
+    (cond ((gochan-receive* chans) =>
+           (lambda (msg)
+             (loop (proc (car msg) state))))
+          (else state))))

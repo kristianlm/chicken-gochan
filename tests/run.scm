@@ -103,3 +103,10 @@
          "last")
        (sort (string-split (apply conc (map thread-join! workers)) " ") string<=))
  )
+
+(test-group
+ "gochan-fold"
+  (define c (make-gochan))
+  (for-each (cut gochan-send c <>) (iota 101))
+  (gochan-close c)
+  (test "gochan-fold sum" 5050 (gochan-fold c (lambda (msg state) (+ msg state)) 0)))
