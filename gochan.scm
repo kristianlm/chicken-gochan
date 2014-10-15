@@ -64,7 +64,7 @@
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
   (gochan-closed-set! c #t)
-  (condition-variable-broadcast! (gochan-condvar c)) ;; signal
+  (condition-variable-broadcast! (gochan-condvar c))
   (mutex-unlock! (gochan-mutex c)))
 
 ;; apply proc to each incoming msg as they appear on the channel,
