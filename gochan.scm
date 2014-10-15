@@ -16,18 +16,26 @@
   (rear gochan-rear gochan-rear-set!)
   (closed? gochan-closed? gochan-closed-set!))
 
+
+(define (semaphore-close! cv) (condition-variable-specific-set! cv #t))
+(define (semaphore-open! cv)  (condition-variable-specific-set! cv #f))
+(define (semaphore-open? cv)  (eq? #f (condition-variable-specific cv)))
+
+;; make a binary open/closed semaphore. default state is closed. unsed
+;; interchangible with condvar.
 (define (make-semaphore name)
   (let ((cv (make-condition-variable name)))
-    (condition-variable-specific-set! cv #f)
+    (semaphore-close! cv)
     cv))
 
-;; turn simple condvars into binary semaphores.
+;; returns #t on successful signal, #f if semaphore was already
+;; closed.
 (define (semaphore-signal! condvar)
-  (cond ((condition-variable-specific condvar) #f) ;; already signalled
-        (else
-         (condition-variable-specific-set! condvar #t)
-         (condition-variable-signal! condvar)
-         #t))) ;; successfully signalled
+  (cond ((semaphore-open? condvar)
+         (semaphore-close! condvar)
+         (condition-variable-signal! condvar) ;; triggers receiver
+         #t)
+        (else #f))) ;; already signalled
 
 (define (semaphore-wait! mutex condvar)
   (cond ((condition-variable-specific condvar) #f)
