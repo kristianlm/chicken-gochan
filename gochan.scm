@@ -11,13 +11,17 @@
   (%make-gochan mutex condvar front rear closed?)
   gochan?
   (mutex gochan-mutex gochan-mutex-set!)
-  (condvar gochan-condvar gochan-condvar-set!)
+  (condvar gochan-condvars gochan-condvars-set!)
   (front gochan-front gochan-front-set!)
   (rear gochan-rear gochan-rear-set!)
   (closed? gochan-closed? gochan-closed-set!))
 
 (define (make-gochan)
-  (%make-gochan (make-mutex) (make-condition-variable) '() '() #f))
+  (%make-gochan (make-mutex) ;; mutex
+                '()          ;; condition variables
+                '()          ;; front
+                '()          ;; rear
+                #f))         ;; not closed
 
 (define (gochan-empty? chan)
   (null? (gochan-front chan)))
@@ -35,7 +39,7 @@
       (set-cdr! rear new))
      (else ;; sending to empty gochan
       (gochan-front-set! chan new)
-      (condition-variable-broadcast! (gochan-condvar chan)))))
+      (condition-variable-broadcast! (gochan-condvars chan)))))
   (mutex-unlock! (gochan-mutex chan)))
 
 ;; wrap msg in a list. return #f if channel is closed.
@@ -48,7 +52,7 @@
              (mutex-unlock! (gochan-mutex chan))
              #f) ;; #f for fail
             (else
-             (mutex-unlock! (gochan-mutex chan) (gochan-condvar chan))
+             (mutex-unlock! (gochan-mutex chan) (gochan-condvars chan))
              (gochan-receive* chan))))
      (else
       (gochan-front-set! chan (cdr front))
@@ -64,7 +68,7 @@
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
   (gochan-closed-set! c #t)
-  (condition-variable-broadcast! (gochan-condvar c))
+  (condition-variable-broadcast! (gochan-condvars c))
   (mutex-unlock! (gochan-mutex c)))
 
 ;; apply proc to each incoming msg as they appear on the channel,
