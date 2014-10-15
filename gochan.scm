@@ -60,4 +60,5 @@
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
   (gochan-closed-set! c #t)
+  (condition-variable-broadcast! (gochan-condvar c)) ;; signal
   (mutex-unlock! (gochan-mutex c)))
