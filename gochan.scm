@@ -37,9 +37,11 @@
          #t)
         (else #f))) ;; already signalled
 
-(define (semaphore-wait! mutex condvar)
-  (cond ((condition-variable-specific condvar) #f)
-        (else (mutex-unlock! mutex condvar))))
+;; wait for semaphore to close.
+(define (semaphore-wait! condvar)
+  (cond ((semaphore-open? condvar)
+         (mutex-unlock! (make-mutex) condvar))
+        (else #f))) ;; already signalled
 
 (define (make-gochan)
   (%make-gochan (make-mutex) ;; mutex
@@ -77,8 +79,9 @@
 
   (mutex-unlock! (gochan-mutex chan)))
 
-;; wrap msg in a list. return #f if channel is closed.
-(define (gochan-receive* chan)
+;; return either (cons msg chan), #f (channel closed), or #t
+;; (registered with semaphore).
+(define (gochan-receive** chan semaphore)
   (mutex-lock! (gochan-mutex chan))
   (let ((front (gochan-front chan)))
     (cond
@@ -87,18 +90,41 @@
              (mutex-unlock! (gochan-mutex chan))
              #f) ;; #f for fail
             (else
-             (let ((condvar (make-semaphore (current-thread))))
-               ;; register condvar
-               (gochan-condvars-set! chan (cons condvar (gochan-condvars chan)))
-               (semaphore-wait! (gochan-mutex chan) condvar)
-
-               (gochan-receive* chan)))))
+             ;; register condvar with channel
+             (gochan-condvars-set! chan (cons semaphore (gochan-condvars chan)))
+             (mutex-unlock! (gochan-mutex chan))
+             #t)))
      (else
       (gochan-front-set! chan (cdr front))
       (if (null? (cdr front))
           (gochan-rear-set! chan '()))
       (mutex-unlock! (gochan-mutex chan))
-      (list (car front)))))) ;; (list <msg>)
+      (cons (car front) chan))))) ;; (cons msg chan)
+
+;; accept channel or list of channels. returns (list msg channel) or
+;; #f for all channels closed.
+(define (gochan-receive* chans%)
+  (let ((chans (if (pair? chans%) chans% (list chans%)))
+        (semaphore (make-semaphore (current-thread))))
+
+    (let loop ((chans chans)
+               (never-used? #t)) ;; anybody registered our semaphore?
+      (if (pair? chans)
+          (let* ((chan (car chans))
+                 (msgchan (gochan-receive** chan semaphore)))
+            (cond ((pair? msgchan) msgchan)
+                  ;; channel registered with semaphore
+                  ((eq? #t msgchan)
+                   ;; open semaphore only once (might close async)
+                   (if never-used? (semaphore-open! semaphore))
+                   (loop (cdr chans) #f))
+                  ;; channel was closed!
+                  (else (loop (cdr chans) never-used?))))
+          ;; we've run through all channels without a message.
+          (cond (never-used? #f) ;; all channels were closed
+                (else ;; we have registered our semaphore with all channels
+                 (semaphore-wait! semaphore)
+                 (gochan-receive* chans%)))))))
 
 (define (gochan-receive chan)
   (cond ((gochan-receive* chan) => car)
