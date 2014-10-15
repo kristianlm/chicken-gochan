@@ -18,3 +18,22 @@
  (test "on-closed unlocks mutex" 'nevermind (gochan-receive c (lambda (c) 'nevermind)))
 
  )
+
+
+(test-group
+ "multiple receivers - no blocking"
+
+ (define channel (make-gochan))
+ (define result (make-gochan))
+ (define (process) (gochan-send result (gochan-receive channel)))
+ (define t1 (thread-start! (make-thread (lambda () (process)))))
+ (define t2 (thread-start! (make-thread (lambda () (process)))))
+
+ (thread-yield!) ;; make both t1 and t2 wait on condvar
+
+ (begin
+   (gochan-send channel "1")
+   (gochan-send channel "2"))
+
+ (test "1" (gochan-receive result))
+ (test "2" (gochan-receive result)))
