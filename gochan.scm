@@ -38,8 +38,12 @@
      ((pair? rear)
       (set-cdr! rear new))
      (else ;; sending to empty gochan
-      (gochan-front-set! chan new)
-      (condition-variable-broadcast! (gochan-condvars chan)))))
+      (gochan-front-set! chan new)))
+    ;; signal anyone who has registered
+    (let ((condvars (gochan-condvars chan)))
+      (cond ((pair? condvars)
+             (gochan-condvars-set! chan  (cdr condvars)) ;; unregister
+             (condition-variable-signal! (car condvars))))))
   (mutex-unlock! (gochan-mutex chan)))
 
 ;; wrap msg in a list. return #f if channel is closed.
@@ -52,8 +56,10 @@
              (mutex-unlock! (gochan-mutex chan))
              #f) ;; #f for fail
             (else
-             (mutex-unlock! (gochan-mutex chan) (gochan-condvars chan))
-             (gochan-receive* chan))))
+             (let ((condvar (make-condition-variable)))
+               (gochan-condvars-set! chan (cons condvar (gochan-condvars chan)))
+               (mutex-unlock! (gochan-mutex chan) condvar)
+               (gochan-receive* chan)))))
      (else
       (gochan-front-set! chan (cdr front))
       (if (null? (cdr front))
@@ -68,7 +74,7 @@
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
   (gochan-closed-set! c #t)
-  (condition-variable-broadcast! (gochan-condvars c))
+  (for-each condition-variable-signal! (gochan-condvars c))
   (mutex-unlock! (gochan-mutex c)))
 
 ;; apply proc to each incoming msg as they appear on the channel,
