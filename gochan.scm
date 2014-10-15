@@ -159,3 +159,11 @@
            (lambda (msg)
              (loop (proc (car msg) state))))
           (else state))))
+
+(define (gochan-select* chan.proc-alist)
+  (cond ((gochan-receive* chan.proc-alist) =>
+         (lambda (msgpair)
+           (let ((msg (car msgpair))
+                 (proc (cdr msgpair)))
+             (proc msg))))
+        (else (error "channels closed" chan.proc-alist))))
