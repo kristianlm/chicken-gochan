@@ -63,24 +63,23 @@
  "empty multiple channels"
  (define c1 (make-gochan))
  (define c2 (make-gochan))
- (define (process)
-   (with-output-to-string (lambda () (gochan-for-each (list c1 c2) (lambda (x) (display x) (thread-sleep! 0.1))))))
+ (define (process) (gochan-fold (list c1 c2) (lambda (x s) (thread-yield!) (+ x s)) 0))
  (define workers (map thread-start! (make-list 4 process)))
 
  ;; a couple of challenges
- (thread-yield!) (for-each (cut gochan-send c1 <>) (map (cut conc " c1" <>) (iota 5)))
- (thread-yield!) (for-each (cut gochan-send c2 <>) (map (cut conc " c2" <>) (iota 5)))
+ (thread-yield!) (for-each (cut gochan-send c1 <>) (iota 10 1000))
+ (thread-yield!) (for-each (cut gochan-send c2 <>) (iota 10 100))
  (thread-yield!)
 
- (gochan-send c2 " last")
  (gochan-close c1)
  (gochan-close c2)
 
- (test "multiple empty channels with multiple workers"
-       '("c10" "c11" "c12" "c13" "c14"
-         "c20" "c21" "c22" "c23" "c24"
-         "last")
-       (sort (string-split (apply conc (map thread-join! workers)) " ") string<=))
+ (let ((worker-sums (map thread-join! workers)))
+   (test "fair worker distribution" #t (every (cut < 1000 <>) worker-sums))
+   (test "multiple empty channels with multiple workers"
+         (+ 10000 9 8 7 6 5 4 3 2 1
+            1000  9 8 7 6 5 4 3 2 1)
+         (fold + 0 worker-sums)))
  )
 
 (test-group
