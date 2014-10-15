@@ -135,7 +135,7 @@
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
   (gochan-closed-set! c #t)
-  (for-each condition-variable-signal! (gochan-semaphores c))
+  (for-each semaphore-signal! (gochan-semaphores c))
   (mutex-unlock! (gochan-mutex c)))
 
 ;; apply proc to each incoming msg as they appear on the channel,
