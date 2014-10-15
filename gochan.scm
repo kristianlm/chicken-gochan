@@ -35,7 +35,7 @@
       (set-cdr! rear new))
      (else ;; sending to empty gochan
       (gochan-front-set! chan new)
-      (condition-variable-signal! (gochan-condvar chan)))))
+      (condition-variable-broadcast! (gochan-condvar chan)))))
   (mutex-unlock! (gochan-mutex chan)))
 
 (define (gochan-receive chan #!optional (closed (cut error "channel is closed" <>)))
