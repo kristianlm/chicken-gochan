@@ -167,3 +167,24 @@
                  (proc (cdr msgpair)))
              (proc msg))))
         (else (error "channels closed" chan.proc-alist))))
+
+;; (gochan-select
+;;  (c1 msg body ...)
+;;  (c2 obj body ...))
+;; becomes:
+;; (gochan-select*
+;;  (cons (cons       c1 (lambda (msg) body ...))
+;;        (cons (cons c2 (lambda (obj) body ...)) '()))
+
+(define-syntax %gochan-select
+  (syntax-rules ()
+    ((_ (channel varname body ...) rest ...)
+     (cons (cons channel (lambda (varname) body ...))
+           (%gochan-select rest ...)))
+    ((_) '())))
+
+(define-syntax gochan-select
+  (syntax-rules ()
+    ((_ spec spec* ...)
+     (gochan-select* (%gochan-select spec spec* ...)))))
+

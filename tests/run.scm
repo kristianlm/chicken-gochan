@@ -103,24 +103,22 @@
   (test "gochan-fold sum" 5050 (gochan-fold c (lambda (msg state) (+ msg state)) 0)))
 
 (test-group
- "gochan-select*"
+ "gochan-select"
  (define c1 (make-gochan))
  (define c2 (make-gochan))
- (gochan-send c1 "foo")
- (gochan-send c2 "bar")
- (gochan-send c1 "baz")
+ (gochan-send c2 2)
+ (gochan-send c1 1)
+ (gochan-send c1 1)
  (gochan-close c1)
  (gochan-close c2)
+ (define (next)
+   (gochan-select
+    (c1 msg (list "c1" msg))
+    (c2 obj (list "c2" obj))))
 
- (define ((callback name) msg) (list name  msg))
- ;; `( (channel . procedure) ...)
- (define selectors
-   (list (cons c1 (callback "c1"))
-         (cons c2 (callback "c2"))))
-
- (test "gochan-select* nonempty 1" '("c1" "foo") (gochan-select* selectors))
- (test "gochan-select* nonempty 2" '("c1" "baz") (gochan-select* selectors))
- (test "gochan-select* nonempty 3" '("c2" "bar") (gochan-select* selectors))
+ (test "gochan-select 1" '("c1" 1) (next))
+ (test "gochan-select 2" '("c1" 1) (next))
+ (test "gochan-select 3" '("c2" 2) (next))
  )
 
 (test-exit)
