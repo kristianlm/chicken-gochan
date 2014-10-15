@@ -81,27 +81,33 @@
 
   (mutex-unlock! (gochan-mutex chan)))
 
-;; return either (cons msg chan), #f (channel closed), or #t
-;; (registered with semaphore).
-(define (gochan-receive** chan semaphore)
-  (mutex-lock! (gochan-mutex chan))
-  (let ((front (gochan-front chan)))
-    (cond
-     ((null? front) ;; receiving from empty gochan
-      (cond ((gochan-closed? chan)
-             (mutex-unlock! (gochan-mutex chan))
-             #f) ;; #f for fail
-            (else
-             ;; register semaphore with channel
-             (gochan-semaphores-set! chan (cons semaphore (gochan-semaphores chan)))
-             (mutex-unlock! (gochan-mutex chan))
-             #t)))
-     (else
-      (gochan-front-set! chan (cdr front))
-      (if (null? (cdr front))
-          (gochan-rear-set! chan '()))
-      (mutex-unlock! (gochan-mutex chan))
-      (cons (car front) chan))))) ;; (cons msg chan)
+;; returns:
+;; #f if channel closed
+;; #t if registered with semaphore
+;; (cons msg (cdr chan) if chan is pair (userdata)
+;; (cons msg '()) if chain is gochan (no userdata)
+;; userdata is useful for finding which channel a message came from.
+(define (gochan-receive** chan% semaphore)
+  (let ((chan (if (pair? chan%) (car chan%) chan%)))
+    (mutex-lock! (gochan-mutex chan))
+    (let ((front (gochan-front chan)))
+      (cond
+       ((null? front) ;; receiving from empty gochan
+        (cond ((gochan-closed? chan)
+               (mutex-unlock! (gochan-mutex chan))
+               #f) ;; #f for fail
+              (else
+               ;; register semaphore with channel
+               (gochan-semaphores-set! chan (cons semaphore (gochan-semaphores chan)))
+               (mutex-unlock! (gochan-mutex chan))
+               #t)))
+       (else
+        (gochan-front-set! chan (cdr front))
+        (if (null? (cdr front))
+            (gochan-rear-set! chan '()))
+        (mutex-unlock! (gochan-mutex chan))
+         ;; return associated userdata if present:
+        (cons (car front) (if (pair? chan%) (cdr chan%) '())))))))
 
 ;; accept channel or list of channels. returns (list msg channel) or
 ;; #f for all channels closed.
