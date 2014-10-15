@@ -37,3 +37,14 @@
 
  (test "1" (gochan-receive result))
  (test "2" (gochan-receive result)))
+
+
+(test-group
+ "gochan-for-each"
+
+ (define ch (make-gochan))
+ (define t (thread-start! (lambda () (with-output-to-string (lambda () (gochan-for-each ch display))))))
+ (gochan-send ch "a")
+ (gochan-send ch "b")
+ (gochan-close ch)
+ (test "ab" (thread-join! t)))

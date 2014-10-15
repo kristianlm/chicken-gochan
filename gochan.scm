@@ -38,7 +38,7 @@
       (condition-variable-broadcast! (gochan-condvar chan)))))
   (mutex-unlock! (gochan-mutex chan)))
 
-(define (gochan-receive chan #!optional (closed (cut error "channel is closed" <>)))
+(define (gochan-receive chan #!optional (closed (cut error "channel is closed" <>)) (wrap values))
   (mutex-lock! (gochan-mutex chan))
   (let ((front (gochan-front chan)))
     (cond
@@ -54,10 +54,19 @@
       (if (null? (cdr front))
           (gochan-rear-set! chan '()))
       (mutex-unlock! (gochan-mutex chan))
-      (car front)))))
+      (wrap (car front)))))) ;; <-- distinguish between error returning #f and #f msg
 
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
   (gochan-closed-set! c #t)
   (condition-variable-broadcast! (gochan-condvar c)) ;; signal
   (mutex-unlock! (gochan-mutex c)))
+
+;; apply proc to each incoming msg as they appear on the channel,
+;; return (void) when channel is emptied and closed.
+(define (gochan-for-each c proc)
+  (let loop ()
+    (cond ((gochan-receive c
+                           (lambda (c) #f)
+                           (lambda (msg) (proc msg) #t))
+           (loop)))))
