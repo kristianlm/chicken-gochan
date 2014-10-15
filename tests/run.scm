@@ -109,3 +109,5 @@
   (for-each (cut gochan-send c <>) (iota 101))
   (gochan-close c)
   (test "gochan-fold sum" 5050 (gochan-fold c (lambda (msg state) (+ msg state)) 0)))
+
+(test-exit)
