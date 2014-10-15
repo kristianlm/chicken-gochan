@@ -136,7 +136,7 @@
 
 (define (gochan-receive chan)
   (cond ((gochan-receive* chan) => car)
-        (else (error "channel is closed" chan))))
+        (else (error "channels closed" chan))))
 
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
