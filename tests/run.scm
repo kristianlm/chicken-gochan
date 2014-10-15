@@ -1,7 +1,5 @@
+(use gochan test)
 
-(include "gochan.scm")
-
-(use test)
 (test-group
  "simple gochan"
  (define c (make-gochan))
