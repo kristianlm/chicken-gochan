@@ -21,7 +21,6 @@
 
  )
 
-
 (test-group
  "multiple receivers - no blocking"
 
@@ -40,26 +39,6 @@
  (test "1" (gochan-receive result))
  (test "2" (gochan-receive result)))
 
-
-(test-group
- "gochan-for-each"
-
- (define c (make-gochan))
- (define (process)
-   (with-output-to-string
-     (lambda () (gochan-for-each c
-                            (lambda (x)
-                              (display x)
-                              (thread-sleep! 1))))))
- (define workers (map thread-start! (make-list 4 process)))
- (gochan-send c "a")
- (gochan-send c "b")
- (gochan-send c "c")
- (gochan-close c)
-
- (test "for-each multiple workers"
-       3
-       (string-length (apply conc (map thread-join! workers)))))
 
 (test-group
  "multiple channels"
@@ -103,6 +82,26 @@
          "last")
        (sort (string-split (apply conc (map thread-join! workers)) " ") string<=))
  )
+
+(test-group
+ "gochan-for-each"
+
+ (define c (make-gochan))
+ (define (process)
+   (with-output-to-string
+     (lambda () (gochan-for-each c
+                            (lambda (x)
+                              (display x)
+                              (thread-sleep! 1))))))
+ (define workers (map thread-start! (make-list 4 process)))
+ (gochan-send c "a")
+ (gochan-send c "b")
+ (gochan-send c "c")
+ (gochan-close c)
+
+ (test "for-each multiple workers"
+       3
+       (string-length (apply conc (map thread-join! workers)))))
 
 (test-group
  "gochan-fold"
