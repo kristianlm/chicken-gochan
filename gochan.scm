@@ -8,10 +8,10 @@
 (use srfi-18)
 
 (define-record-type gochan
-  (%make-gochan mutex condvar front rear closed?)
+  (%make-gochan mutex semaphores front rear closed?)
   gochan?
   (mutex gochan-mutex gochan-mutex-set!)
-  (condvar gochan-condvars gochan-condvars-set!)
+  (semaphores gochan-semaphores gochan-semaphores-set!)
   (front gochan-front gochan-front-set!)
   (rear gochan-rear gochan-rear-set!)
   (closed? gochan-closed? gochan-closed-set!))
@@ -32,17 +32,17 @@
 
 ;; returns #t on successful signal, #f if semaphore was already
 ;; closed.
-(define (semaphore-signal! condvar)
-  (cond ((semaphore-open? condvar)
-         (semaphore-close! condvar)
-         (condition-variable-signal! condvar) ;; triggers receiver
+(define (semaphore-signal! semaphore)
+  (cond ((semaphore-open? semaphore)
+         (semaphore-close! semaphore)
+         (condition-variable-signal! semaphore) ;; triggers receiver
          #t)
         (else #f))) ;; already signalled
 
 ;; wait for semaphore to close.
-(define (semaphore-wait! condvar)
-  (cond ((semaphore-open? condvar)
-         (mutex-unlock! (make-mutex) condvar))
+(define (semaphore-wait! semaphore)
+  (cond ((semaphore-open? semaphore)
+         (mutex-unlock! (make-mutex) semaphore))
         (else #f))) ;; already signalled
 
 (define (make-gochan)
@@ -70,14 +70,14 @@
       (gochan-front-set! chan new)))
 
     ;; signal anyone who has registered
-    (let loop ((condvars (gochan-condvars chan)))
-      (cond ((pair? condvars)
-             (if (semaphore-signal! (car condvars))
+    (let loop ((semaphores (gochan-semaphores chan)))
+      (cond ((pair? semaphores)
+             (if (semaphore-signal! (car semaphores))
                  ;; signalled! remove from semaphore list
-                 (gochan-condvars-set! chan (cdr condvars))
+                 (gochan-semaphores-set! chan (cdr semaphores))
                  ;; not signalled, ignore and remove (someone else
                  ;; signalled)
-                 (loop (cdr condvars))))))) ;; next in line
+                 (loop (cdr semaphores))))))) ;; next in line
 
   (mutex-unlock! (gochan-mutex chan)))
 
@@ -92,8 +92,8 @@
              (mutex-unlock! (gochan-mutex chan))
              #f) ;; #f for fail
             (else
-             ;; register condvar with channel
-             (gochan-condvars-set! chan (cons semaphore (gochan-condvars chan)))
+             ;; register semaphore with channel
+             (gochan-semaphores-set! chan (cons semaphore (gochan-semaphores chan)))
              (mutex-unlock! (gochan-mutex chan))
              #t)))
      (else
@@ -135,7 +135,7 @@
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
   (gochan-closed-set! c #t)
-  (for-each condition-variable-signal! (gochan-condvars c))
+  (for-each condition-variable-signal! (gochan-semaphores c))
   (mutex-unlock! (gochan-mutex c)))
 
 ;; apply proc to each incoming msg as they appear on the channel,
