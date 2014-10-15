@@ -43,13 +43,12 @@
   (let ((front (gochan-front chan)))
     (cond
      ((null? front) ;; receiving from empty gochan
-      (if (gochan-closed? chan)
-          (begin
-            (mutex-unlock! (gochan-mutex chan))
-            (closed chan))
-          (begin
-            (mutex-unlock! (gochan-mutex chan) (gochan-condvar chan))
-            (gochan-receive chan))))
+      (cond ((gochan-closed? chan)
+             (mutex-unlock! (gochan-mutex chan))
+             (closed chan))
+            (else
+             (mutex-unlock! (gochan-mutex chan) (gochan-condvar chan))
+             (gochan-receive chan))))
      (else
       (gochan-front-set! chan (cdr front))
       (if (null? (cdr front))
