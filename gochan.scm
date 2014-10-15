@@ -16,6 +16,23 @@
   (rear gochan-rear gochan-rear-set!)
   (closed? gochan-closed? gochan-closed-set!))
 
+(define (make-semaphore name)
+  (let ((cv (make-condition-variable name)))
+    (condition-variable-specific-set! cv #f)
+    cv))
+
+;; turn simple condvars into binary semaphores.
+(define (semaphore-signal! condvar)
+  (cond ((condition-variable-specific condvar) #f) ;; already signalled
+        (else
+         (condition-variable-specific-set! condvar #t)
+         (condition-variable-signal! condvar)
+         #t))) ;; successfully signalled
+
+(define (semaphore-wait! mutex condvar)
+  (cond ((condition-variable-specific condvar) #f)
+        (else (mutex-unlock! mutex condvar))))
+
 (define (make-gochan)
   (%make-gochan (make-mutex) ;; mutex
                 '()          ;; condition variables
@@ -39,11 +56,17 @@
       (set-cdr! rear new))
      (else ;; sending to empty gochan
       (gochan-front-set! chan new)))
+
     ;; signal anyone who has registered
-    (let ((condvars (gochan-condvars chan)))
+    (let loop ((condvars (gochan-condvars chan)))
       (cond ((pair? condvars)
-             (gochan-condvars-set! chan  (cdr condvars)) ;; unregister
-             (condition-variable-signal! (car condvars))))))
+             (if (semaphore-signal! (car condvars))
+                 ;; signalled! remove from signal list
+                 (gochan-condvars-set! chan (cdr condvars))
+                 ;; not signalled, ignore and remove (someone else
+                 ;; signalled)
+                 (loop (cdr condvars))))))) ;; next in line
+
   (mutex-unlock! (gochan-mutex chan)))
 
 ;; wrap msg in a list. return #f if channel is closed.
@@ -56,9 +79,11 @@
              (mutex-unlock! (gochan-mutex chan))
              #f) ;; #f for fail
             (else
-             (let ((condvar (make-condition-variable)))
+             (let ((condvar (make-semaphore (current-thread))))
+               ;; register condvar
                (gochan-condvars-set! chan (cons condvar (gochan-condvars chan)))
-               (mutex-unlock! (gochan-mutex chan) condvar)
+               (semaphore-wait! (gochan-mutex chan) condvar)
+
                (gochan-receive* chan)))))
      (else
       (gochan-front-set! chan (cdr front))
