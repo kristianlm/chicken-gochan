@@ -16,8 +16,8 @@ synchronization. This implementation has largely been inspired by
 Currently supported:
 
 - closable channels (they can have limited length)
-- receive from multiple channels (gochan-receive (list channel1 channel2))
-- gochan-select syntax
+- receive from multiple channels `(gochan-receive (list channel1 channel2))`
+- `gochan-select` syntax
 
 ## Samples
 
