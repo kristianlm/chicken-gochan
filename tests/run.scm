@@ -134,6 +134,20 @@
        '(#t #t #t #t)
        (map thread-join! workers))
 
+
+ (test 'timeout
+       (gochan-select
+        (c msg (error "from c1" msg))
+        (0.1 'timeout)))
+
+
+ (define cclosed (make-gochan))
+ (gochan-close cclosed)
+ (test-error
+  "no timeout, closed channel still produces error"
+  (gochan-select
+   (cclosed msg 'msg)
+   (0 'to)))
  )
 
 (test-exit)

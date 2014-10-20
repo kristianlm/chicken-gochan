@@ -163,21 +163,24 @@
              (loop (proc (car msg) state))))
           (else state))))
 
-(define (gochan-select* chan.proc-alist timeout)
-  (cond ((gochan-receive* chan.proc-alist timeout) =>
-         (lambda (msgpair)
+(define (gochan-select* chan.proc-alist timeout timeout-proc)
+  (let ((msgpair (gochan-receive* chan.proc-alist timeout)))
+    (cond ((eq? #t msgpair) (timeout-proc)) ;; <-- timeout
+          (msgpair
            (let ((msg (car msgpair))
                  (proc (cdr msgpair)))
-             (proc msg))))
-        (else (error "channels closed" chan.proc-alist))))
+             (proc msg)))
+          (else (error "channels closed" chan.proc-alist)))))
 
 ;; (gochan-select
 ;;  (c1 msg body ...)
+;;  (10 timeout-body ...)
 ;;  (c2 obj body ...))
 ;; becomes:
 ;; (gochan-select*
 ;;  (cons (cons       c1 (lambda (msg) body ...))
 ;;        (cons (cons c2 (lambda (obj) body ...)) '()))
+;;  10 (lambda () timeout-body ...))
 
 (define-syntax %gochan-select
   (syntax-rules ()
@@ -187,7 +190,27 @@
     ((_) '())))
 
 (define-syntax gochan-select
-  (syntax-rules ()
-    ((_ spec spec* ...)
-     (gochan-select* (%gochan-select spec spec* ...) #f))))
+  (er-macro-transformer
+   (lambda (x r t)
+     (let loop ((forms (cdr x)) ;; original specs+timeout
+                (timeout #f)
+                (timeout-proc #f)
+                (specs '())) ;; non-timeout specs
+       (if (pair? forms)
+           (let ((spec (car forms)))
+             (if (number? (car spec))
+                 (if timeout
+                     (error "multiple timeouts specified" spec)
+                     (loop (cdr forms)
+                           (car spec)           ;; timeout in seconds
+                           `(lambda () ,@(cdr spec)) ;; timeout body
+                           specs))
+                 (loop (cdr forms)
+                       timeout timeout-proc
+                       (cons spec specs))))
+
+           `(,(r 'gochan-select*)
+             (,(r '%gochan-select) ,@(reverse specs))
+             ,timeout ,timeout-proc))))))
+
 
