@@ -9,7 +9,7 @@ synchronization. This implementation has largely been inspired by
 
 ## Requirements
 
-- srfi-18
+- [srfi-18](http://api.call-cc.org/doc/srfi-18)
 
 ## Development Status
 
