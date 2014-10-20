@@ -12,12 +12,12 @@
  (test-error "send to closed gochan fails" (gochan-send c 'three))
 
  (test "closed channel keeps buffer" 'two        (gochan-receive c))
- (test "gochan-receive*"             'three (car (gochan-receive* c)))
+ (test "gochan-receive*"             'three (car (gochan-receive* c #f)))
 
  (test-error "errors on recving from closed and empty gochan" (gochan-receive c) )
 
- (test "gochan-receive* #f when closed" #f (gochan-receive* c))
- (test "on-closed unlocks mutex"        #f (gochan-receive* c))
+ (test "gochan-receive* #f when closed" #f (gochan-receive* c #f))
+ (test "on-closed unlocks mutex"        #f (gochan-receive* c #f))
 
  )
 
@@ -56,7 +56,7 @@
  (gochan-close c2)
 
  (test "close first" 'c2-again (gochan-receive (list c1 c2)))
- (test "both closed" #f (gochan-receive* (list c1 c2)))
+ (test "both closed" #f (gochan-receive* (list c1 c2) #f))
  )
 
 (test-group
@@ -119,6 +119,21 @@
  (test "gochan-select 1" '("c1" 1) (next))
  (test "gochan-select 2" '("c1" 1) (next))
  (test "gochan-select 3" '("c2" 2) (next))
+ )
+
+(test-group
+ "timeouts"
+
+ (test "immediate timeout" #t (gochan-receive* (make-gochan) 0))
+ (test-error "timeout error" (gochan-receive (make-gochan) 0))
+
+ (define c (make-gochan))
+ (define workers (map thread-start! (make-list 4 (lambda () (gochan-receive* c 0.1)))))
+
+ (test "simultaneous timeouts"
+       '(#t #t #t #t)
+       (map thread-join! workers))
+
  )
 
 (test-exit)

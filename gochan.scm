@@ -39,11 +39,11 @@
          #t)
         (else #f))) ;; already signalled
 
-;; wait for semaphore to close.
-(define (semaphore-wait! semaphore)
+;; wait for semaphore to close. #f means timeout, #t otherwise.
+(define (semaphore-wait! semaphore timeout)
   (cond ((semaphore-open? semaphore)
-         (mutex-unlock! (make-mutex) semaphore))
-        (else #f))) ;; already signalled
+         (mutex-unlock! (make-mutex) semaphore timeout)) ;; <-- #f on timeout
+        (else #t))) ;; already signalled
 
 (define (make-gochan)
   (%make-gochan (make-mutex) ;; mutex
@@ -109,9 +109,11 @@
          ;; return associated userdata if present:
         (cons (car front) (if (pair? chan%) (cdr chan%) '())))))))
 
-;; accept channel or list of channels. returns (list msg channel) or
-;; #f for all channels closed.
-(define (gochan-receive* chans%)
+;; accept channel or list of channels. returns:
+;; (list msg channel) on success,
+;; #f for all channels closed
+;; #t for timeout
+(define (gochan-receive* chans% timeout)
   (let ((chans (if (pair? chans%) chans% (list chans%)))
         (semaphore (make-semaphore (current-thread))))
 
@@ -129,12 +131,15 @@
           ;; we've run through all channels without a message.
           (cond (never-used? #f) ;; all channels were closed
                 (else ;; we have registered our semaphore with all channels
-                 (semaphore-wait! semaphore)
-                 (gochan-receive* chans%)))))))
+                 (if (semaphore-wait! semaphore timeout)
+                     (gochan-receive* chans% timeout)
+                     #t))))))) ;;<-- timeout
 
-(define (gochan-receive chan)
-  (cond ((gochan-receive* chan) => car)
-        (else (error "channels closed" chan))))
+(define (gochan-receive chan #!optional timeout)
+  (let ((msg* (gochan-receive* chan timeout)))
+    (cond ((eq? msg* #t) (error "timeout" chan))
+          (msg* => car) ;; normal msgpair
+          (else (error "channels closed" chan)))))
 
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
@@ -146,20 +151,20 @@
 ;; return (void) when channel is emptied and closed.
 (define (gochan-for-each c proc)
   (let loop ()
-    (cond ((gochan-receive* c) =>
+    (cond ((gochan-receive* c #f) =>
            (lambda (msg)
              (proc (car msg))
              (loop))))))
 
 (define (gochan-fold chans proc initial)
   (let loop ((state initial))
-    (cond ((gochan-receive* chans) =>
+    (cond ((gochan-receive* chans #f) =>
            (lambda (msg)
              (loop (proc (car msg) state))))
           (else state))))
 
 (define (gochan-select* chan.proc-alist)
-  (cond ((gochan-receive* chan.proc-alist) =>
+  (cond ((gochan-receive* chan.proc-alist #f) =>
          (lambda (msgpair)
            (let ((msg (car msgpair))
                  (proc (cdr msgpair)))
