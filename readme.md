@@ -17,6 +17,7 @@ Currently supported:
 
 - closable channels (they can have limited length)
 - receive from multiple channels `(gochan-receive (list channel1 channel2))`
+- receive timeouts
 - `gochan-select` syntax
 
 ## Comparison to real Go Channels
