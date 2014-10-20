@@ -163,8 +163,8 @@
              (loop (proc (car msg) state))))
           (else state))))
 
-(define (gochan-select* chan.proc-alist)
-  (cond ((gochan-receive* chan.proc-alist #f) =>
+(define (gochan-select* chan.proc-alist timeout)
+  (cond ((gochan-receive* chan.proc-alist timeout) =>
          (lambda (msgpair)
            (let ((msg (car msgpair))
                  (proc (cdr msgpair)))
@@ -189,5 +189,5 @@
 (define-syntax gochan-select
   (syntax-rules ()
     ((_ spec spec* ...)
-     (gochan-select* (%gochan-select spec spec* ...)))))
+     (gochan-select* (%gochan-select spec spec* ...) #f))))
 
