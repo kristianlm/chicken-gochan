@@ -19,6 +19,11 @@ Currently supported:
 - receive from multiple channels `(gochan-receive (list channel1 channel2))`
 - `gochan-select` syntax
 
+## Comparison to real Go Channels
+
+- all channels have an unlimited buffer
+- types are dynamic
+
 ## Samples
 
 See `./tests/worker-pool.scm` for a port of
