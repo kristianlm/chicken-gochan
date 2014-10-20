@@ -21,13 +21,13 @@
 (define (semaphore-open! cv)  (condition-variable-specific-set! cv #f))
 (define (semaphore-open? cv)  (eq? #f (condition-variable-specific cv)))
 
-;; make a binary open/closed semaphore. default state is closed.
+;; make a binary open/closed semaphore. default state is open.
 ;; actually a condition-variable which can be signalled. we need the
 ;; state a semaphore provides for guarantees of the sender-end
 ;; "awaking" the receiving end.
 (define (make-semaphore name)
   (let ((cv (make-condition-variable name)))
-    (semaphore-close! cv)
+    (semaphore-open! cv)
     cv))
 
 ;; returns #t on successful signal, #f if semaphore was already
@@ -123,8 +123,6 @@
             (cond ((pair? msgchan) msgchan)
                   ;; channel registered with semaphore
                   ((eq? #t msgchan)
-                   ;; open semaphore only once (might close async)
-                   (if never-used? (semaphore-open! semaphore))
                    (loop (cdr chans) #f))
                   ;; channel was closed!
                   (else (loop (cdr chans) never-used?))))
