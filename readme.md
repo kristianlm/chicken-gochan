@@ -8,9 +8,7 @@ fifo queues that are useful in concurrency and for thread
 synchronization. This implementation has largely been inspired by
 [this Go channel tutorial](https://gobyexample.com/channels).
 
-## Requirements
-
-- [srfi-18](http://api.call-cc.org/doc/srfi-18)
+chicken-gochan has no egg dependencies.
 
 ## Development Status
 
