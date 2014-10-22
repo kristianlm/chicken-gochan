@@ -1,2 +1,6 @@
 ;;-*- scheme -*-
-((author "Adellica AS"))
+((author "Adellica AS")
+ (license "BSD")
+ (depends)
+ (test-depends test)
+ (category hell))
