@@ -52,7 +52,7 @@ If you have multiple threads waiting messages from the same gochan,
 the order in which threads receive messages is unspecified (but each
 message is received only once).
 
-    [procedure] (gochan-receive* chans [timeout/seconds])
+    [procedure] (gochan-receive* chans timeout/seconds)
 
 Like `gochan-receive`, but doesn't error out. Instead, it returns:
 `#f` for all channels closed, `#t` for timeout and `(list <msg>)` on
