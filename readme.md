@@ -56,7 +56,7 @@ message is received only once).
 
 Like `gochan-receive`, but doesn't error out. Instead, it returns:
 `#f` for all channels closed, `#t` for timeout and `(list <msg>)` on
-success.
+success (distinguishable from a `#f` or `#t` message).
 
     [procedure] (gochan-close chan)
 
