@@ -45,10 +45,10 @@
          (mutex-unlock! (make-mutex) semaphore timeout)) ;; <-- #f on timeout
         (else #t))) ;; already signalled
 
-(define (make-gochan)
+(define (make-gochan . items)
   (%make-gochan (make-mutex) ;; mutex
                 '()          ;; condition variables
-                '()          ;; front
+                items        ;; front
                 '()          ;; rear
                 #f))         ;; not closed
 

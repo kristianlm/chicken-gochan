@@ -85,10 +85,7 @@
 (test-group
  "gochan-for-each"
 
- (define c (make-gochan))
- (gochan-send c "a")
- (gochan-send c "b")
- (gochan-send c "c")
+ (define c (make-gochan "a" "b" "c"))
  (gochan-close c)
 
  (test "simple for-each"
@@ -104,11 +101,8 @@
 
 (test-group
  "gochan-select"
- (define c1 (make-gochan))
- (define c2 (make-gochan))
- (gochan-send c2 2)
- (gochan-send c1 1)
- (gochan-send c1 1)
+ (define c1 (make-gochan 1 1))
+ (define c2 (make-gochan 2))
  (gochan-close c1)
  (gochan-close c2)
  (define (next)
