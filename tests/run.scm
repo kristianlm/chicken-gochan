@@ -2,7 +2,7 @@
 
 (test-group
  "simple gochan"
- (define c (make-gochan))
+ (define c (gochan))
  (gochan-send c 'one)
  (test "synchronous recv" 'one (gochan-receive c))
  (gochan-send c 'two)
@@ -24,8 +24,8 @@
 (test-group
  "multiple receivers - no blocking"
 
- (define channel (make-gochan))
- (define result (make-gochan))
+ (define channel (gochan))
+ (define result (gochan))
  (define (process) (gochan-send result (gochan-receive channel)))
  (define t1 (thread-start! (make-thread process "tst1")))
  (define t2 (thread-start! (make-thread process "tst2")))
@@ -43,8 +43,8 @@
 (test-group
  "multiple channels"
 
- (define c1 (make-gochan))
- (define c2 (make-gochan))
+ (define c1 (gochan))
+ (define c2 (gochan))
  (gochan-send c1 'c1)
  (gochan-send c2 'c2)
 
@@ -61,8 +61,8 @@
 
 (test-group
  "empty multiple channels"
- (define c1 (make-gochan))
- (define c2 (make-gochan))
+ (define c1 (gochan))
+ (define c2 (gochan))
  (define (process) (gochan-fold (list c1 c2) (lambda (x s) (thread-yield!) (+ x s)) 0))
  (define workers (map thread-start! (make-list 4 process)))
 
@@ -85,7 +85,7 @@
 (test-group
  "gochan-for-each"
 
- (define c (make-gochan "a" "b" "c"))
+ (define c (gochan "a" "b" "c"))
  (gochan-close c)
 
  (test "simple for-each"
@@ -94,15 +94,15 @@
 
 (test-group
  "gochan-fold"
-  (define c (make-gochan))
+  (define c (gochan))
   (for-each (cut gochan-send c <>) (iota 101))
   (gochan-close c)
   (test "gochan-fold sum" 5050 (gochan-fold c (lambda (msg state) (+ msg state)) 0)))
 
 (test-group
  "gochan-select"
- (define c1 (make-gochan 1 1))
- (define c2 (make-gochan 2))
+ (define c1 (gochan 1 1))
+ (define c2 (gochan 2))
  (gochan-close c1)
  (gochan-close c2)
  (define (next)
@@ -118,10 +118,10 @@
 (test-group
  "timeouts"
 
- (test "immediate timeout" #t (gochan-receive* (make-gochan) 0))
- (test-error "timeout error" (gochan-receive (make-gochan) 0))
+ (test "immediate timeout" #t (gochan-receive* (gochan) 0))
+ (test-error "timeout error" (gochan-receive (gochan) 0))
 
- (define c (make-gochan))
+ (define c (gochan))
  (define workers (map thread-start! (make-list 4 (lambda () (gochan-receive* c 0.1)))))
 
  (test "simultaneous timeouts"
@@ -135,7 +135,7 @@
         (0.1 'timeout)))
 
 
- (define cclosed (make-gochan))
+ (define cclosed (gochan))
  (gochan-close cclosed)
  (test-error
   "no timeout, closed channel still produces error"

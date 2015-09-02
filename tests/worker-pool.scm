@@ -11,8 +11,8 @@
                      (gochan-send results (* -1 job))))
   (print (current-thread) " worker exit"))
 
-(define jobs (make-gochan))
-(define res (make-gochan))
+(define jobs (gochan))
+(define res (gochan))
 
 (define workers
   (map

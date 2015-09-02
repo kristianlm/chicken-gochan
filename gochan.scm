@@ -8,7 +8,7 @@
 (use srfi-18)
 
 (define-record-type gochan
-  (%make-gochan mutex semaphores front rear closed?)
+  (%gochan mutex semaphores front rear closed?)
   gochan?
   (mutex gochan-mutex gochan-mutex-set!)
   (semaphores gochan-semaphores gochan-semaphores-set!)
@@ -45,12 +45,12 @@
          (mutex-unlock! (make-mutex) semaphore timeout)) ;; <-- #f on timeout
         (else #t))) ;; already signalled
 
-(define (make-gochan . items)
-  (%make-gochan (make-mutex) ;; mutex
-                '()          ;; condition variables
-                items        ;; front
-                '()          ;; rear
-                #f))         ;; not closed
+(define (gochan . items)
+  (%gochan (make-mutex) ;; mutex
+           '()          ;; condition variables
+           items        ;; front
+           '()          ;; rear
+           #f))         ;; not closed
 
 (define (gochan-empty? chan)
   (null? (gochan-front chan)))

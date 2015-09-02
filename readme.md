@@ -26,7 +26,7 @@ Currently supported:
 
 ## API
 
-    [procedure] (make-gochan [item1] [item2] ...)
+    [procedure] (gochan [item1] [item2] ...)
 
 Construct a `gochan` channel initialized with optional items. Each
 gochan holds a buffer whose length is limited by memory only.

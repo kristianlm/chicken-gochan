@@ -1,5 +1,5 @@
 
-(module gochan (make-gochan
+(module gochan (gochan
                 gochan-receive
                 gochan-receive*
                 gochan-send
