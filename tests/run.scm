@@ -144,4 +144,8 @@
    (0 'to)))
  )
 
+(test-group
+ "stress test"
+ (include "stress.scm"))
+
 (test-exit)
