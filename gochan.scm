@@ -17,9 +17,9 @@
   (closed? gochan-closed? gochan-closed-set!))
 
 
-(define (semaphore-close! cv) (condition-variable-specific-set! cv #t))
-(define (semaphore-open! cv)  (condition-variable-specific-set! cv #f))
-(define (semaphore-open? cv)  (eq? #f (condition-variable-specific cv)))
+(define (cv-close! cv) (condition-variable-specific-set! cv #t))
+(define (cv-open! cv)  (condition-variable-specific-set! cv #f))
+(define (cv-open? cv)  (eq? #f (condition-variable-specific cv)))
 
 ;; make a binary open/closed semaphore. default state is open.
 ;; actually a condition-variable which can be signalled. we need the
@@ -27,21 +27,21 @@
 ;; "awaking" the receiving end.
 (define (make-semaphore name)
   (let ((cv (make-condition-variable name)))
-    (semaphore-open! cv)
+    (cv-open! cv)
     cv))
 
 ;; returns #t on successful signal, #f if semaphore was already
 ;; closed.
 (define (semaphore-signal! semaphore)
-  (cond ((semaphore-open? semaphore)
-         (semaphore-close! semaphore)
+  (cond ((cv-open? semaphore)
+         (cv-close! semaphore)
          (condition-variable-signal! semaphore) ;; triggers receiver
          #t)
         (else #f))) ;; already signalled
 
 ;; wait for semaphore to close. #f means timeout, #t otherwise.
 (define (semaphore-wait! semaphore timeout)
-  (cond ((semaphore-open? semaphore)
+  (cond ((cv-open? semaphore)
          (mutex-unlock! (make-mutex) semaphore timeout)) ;; <-- #f on timeout
         (else #t))) ;; already signalled
 
