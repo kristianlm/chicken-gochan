@@ -146,6 +146,7 @@
 
 (test-group
  "stress test"
- (include "stress.scm"))
+ (include "stress.scm")
+ (test "no stress.scm assertions" #t #t))
 
 (test-exit)
