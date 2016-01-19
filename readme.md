@@ -70,11 +70,12 @@ Closed predicate.
     [procedure] (gochan-for-each chans proc)
 
 Call `(proc <msg>)` for each msg in chan (`proc` must unfortunately
-have side-effects). Returns `(void)` when chan is closed.
+have side-effects). Returns `(void)` when all `chans` is closed.
 
     [procedure] (gochan-fold chans proc)
 
-Like a normal fold, but fold over chans's messages.
+Like a normal fold, but fold over chans's messages. Returns when all
+`chans` are closed.
 
     [syntax] (gochan-select (<chan> <var> body ...) ... (<timeout/seconds> body ...))
 
