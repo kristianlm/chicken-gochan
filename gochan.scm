@@ -16,6 +16,7 @@
   (rear gochan-rear gochan-rear-set!)
   (closed? gochan-closed? gochan-closed-set!))
 
+(define-record gochan-semaphore mutex cv)
 
 (define (cv-close! cv) (condition-variable-specific-set! cv #t))
 (define (cv-open! cv)  (condition-variable-specific-set! cv #f))
@@ -28,22 +29,32 @@
 (define (make-semaphore name)
   (let ((cv (make-condition-variable name)))
     (cv-open! cv)
-    cv))
+    (make-gochan-semaphore (make-mutex) cv)))
 
 ;; returns #t on successful signal, #f if semaphore was already
 ;; closed.
 (define (semaphore-signal! semaphore)
-  (cond ((cv-open? semaphore)
-         (cv-close! semaphore)
-         (condition-variable-signal! semaphore) ;; triggers receiver
-         #t)
-        (else #f))) ;; already signalled
+  (mutex-lock! (gochan-semaphore-mutex semaphore))
+  (let ((cv (gochan-semaphore-cv semaphore)))
+   (cond ((cv-open? cv)
+          (cv-close! cv)
+          (condition-variable-signal! cv) ;; triggers receiver
+          (mutex-unlock! (gochan-semaphore-mutex semaphore))
+          #t)
+         (else
+          (mutex-unlock! (gochan-semaphore-mutex semaphore))
+          #f)))) ;; already signalled
 
 ;; wait for semaphore to close. #f means timeout, #t otherwise.
 (define (semaphore-wait! semaphore timeout)
-  (cond ((cv-open? semaphore)
-         (mutex-unlock! (make-mutex) semaphore timeout)) ;; <-- #f on timeout
-        (else #t))) ;; already signalled
+  (mutex-lock! (gochan-semaphore-mutex semaphore))
+  (let ((cv (gochan-semaphore-cv semaphore)))
+   (cond ((cv-open? cv)
+          (mutex-unlock! (gochan-semaphore-mutex semaphore)
+                         cv timeout)) ;; <-- #f on timeout
+         (else
+          (mutex-unlock! (gochan-semaphore-mutex semaphore))
+          #t)))) ;; already signalled
 
 (define (gochan . items)
   (%gochan (make-mutex) ;; mutex
