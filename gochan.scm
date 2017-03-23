@@ -90,7 +90,8 @@
                  ;; signalled)
                  (loop (cdr semaphores))))))) ;; next in line
 
-  (mutex-unlock! (gochan-mutex chan)))
+  (mutex-unlock! (gochan-mutex chan))
+  (void))
 
 ;; returns:
 ;; #f if channel closed
