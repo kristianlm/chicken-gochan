@@ -12,7 +12,7 @@
   (%gochan mutex semaphores buffer closed?)
   gochan?
   (mutex gochan-mutex gochan-mutex-set!)
-  (semaphores gochan-semaphores gochan-semaphores-set!)
+  (semaphores gochan-semaphores)
   (buffer gochan-buffer)
   (closed? gochan-closed? gochan-closed-set!))
 
@@ -22,7 +22,7 @@
     (display "#<gochan " p)
     (display (queue-length (gochan-buffer x))  p)
     (display "/" p)
-    (display (length (gochan-semaphores x))  p)
+    (display (queue-length (gochan-semaphores x))  p)
     (display ">" p)))
 
 (define (cv-close! cv) (condition-variable-specific-set! cv #t))
@@ -65,9 +65,25 @@
 
 (define (gochan . items)
   (%gochan (make-mutex)        ;; mutex
-           '()                 ;; condition variables
+           (list->queue '())   ;; condition variables
            (list->queue items) ;; buffer
            #f))                ;; not closed
+
+;; try to send a signal to anyone who has registered with
+;; chan. returns #t if someone was signalled (and thus awakened),
+;; return #f otherwise. this must be called in a locked gochan mutex
+;; context.
+(define (%gochan-signal c)
+  (let ((semaphores (gochan-semaphores c)))
+    (let loop ()
+      (if (queue-empty? semaphores)
+          #f
+          (if (semaphore-signal! (queue-remove! semaphores))
+              ;; signaled, great success!
+              #t
+              ;; not signalled, so somebody else signalled the
+              ;; semaphore. keep trying.
+              (loop))))))
 
 (define (gochan-send chan obj)
   (mutex-lock! (gochan-mutex chan))
@@ -77,15 +93,9 @@
 
   (queue-add! (gochan-buffer chan) obj)
 
-  ;; signal anyone who has registered
-  (let loop ((semaphores (gochan-semaphores chan)))
-    (cond ((pair? semaphores)
-           (if (semaphore-signal! (car semaphores))
-               ;; signalled! remove from semaphore list
-               (gochan-semaphores-set! chan (cdr semaphores))
-               ;; not signalled, ignore and remove (someone else
-               ;; signalled)
-               (loop (cdr semaphores)))))) ;; next in line
+  (%gochan-signal chan)
+
+  ;; TODO: handle no semaphores and unbuffered channel
 
   (mutex-unlock! (gochan-mutex chan))
   (void))
@@ -107,7 +117,7 @@
                #f) ;; #f for fail
               (else
                ;; register semaphore with channel
-               (gochan-semaphores-set! chan (cons semaphore (gochan-semaphores chan)))
+               (queue-add! (gochan-semaphores chan) semaphore)
                (mutex-unlock! (gochan-mutex chan))
                #t)))
        (else
@@ -151,7 +161,7 @@
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
   (gochan-closed-set! c #t)
-  (for-each semaphore-signal! (gochan-semaphores c))
+  (%gochan-signal c)
   (mutex-unlock! (gochan-mutex c)))
 
 ;; apply proc to each incoming msg as they appear on the channel,
