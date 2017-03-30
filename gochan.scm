@@ -5,15 +5,15 @@
 ;;
 ;; Inspired by channels from goroutines.
 
-(use srfi-18)
+(use srfi-18
+     (only data-structures list->queue queue-add! queue-empty? queue-remove!))
 
 (define-record-type gochan
-  (%gochan mutex semaphores front rear closed?)
+  (%gochan mutex semaphores buffer closed?)
   gochan?
   (mutex gochan-mutex gochan-mutex-set!)
   (semaphores gochan-semaphores gochan-semaphores-set!)
-  (front gochan-front gochan-front-set!)
-  (rear gochan-rear gochan-rear-set!)
+  (buffer gochan-buffer)
   (closed? gochan-closed? gochan-closed-set!))
 
 (define-record gochan-semaphore mutex cv)
@@ -57,38 +57,28 @@
           #t)))) ;; already signalled
 
 (define (gochan . items)
-  (%gochan (make-mutex) ;; mutex
-           '()          ;; condition variables
-           items        ;; front
-           '()          ;; rear
-           #f))         ;; not closed
-
-(define (gochan-empty? chan)
-  (null? (gochan-front chan)))
+  (%gochan (make-mutex)        ;; mutex
+           '()                 ;; condition variables
+           (list->queue items) ;; buffer
+           #f))                ;; not closed
 
 (define (gochan-send chan obj)
   (mutex-lock! (gochan-mutex chan))
   (when (gochan-closed? chan)
     (begin (mutex-unlock! (gochan-mutex chan))
            (error "gochan closed" chan)))
-  (let ((new (list obj))
-        (rear (gochan-rear chan)))
-    (gochan-rear-set! chan new)
-    (cond
-     ((pair? rear)
-      (set-cdr! rear new))
-     (else ;; sending to empty gochan
-      (gochan-front-set! chan new)))
 
-    ;; signal anyone who has registered
-    (let loop ((semaphores (gochan-semaphores chan)))
-      (cond ((pair? semaphores)
-             (if (semaphore-signal! (car semaphores))
-                 ;; signalled! remove from semaphore list
-                 (gochan-semaphores-set! chan (cdr semaphores))
-                 ;; not signalled, ignore and remove (someone else
-                 ;; signalled)
-                 (loop (cdr semaphores))))))) ;; next in line
+  (queue-add! (gochan-buffer chan) obj)
+
+  ;; signal anyone who has registered
+  (let loop ((semaphores (gochan-semaphores chan)))
+    (cond ((pair? semaphores)
+           (if (semaphore-signal! (car semaphores))
+               ;; signalled! remove from semaphore list
+               (gochan-semaphores-set! chan (cdr semaphores))
+               ;; not signalled, ignore and remove (someone else
+               ;; signalled)
+               (loop (cdr semaphores)))))) ;; next in line
 
   (mutex-unlock! (gochan-mutex chan))
   (void))
@@ -102,9 +92,9 @@
 (define (gochan-receive** chan% semaphore)
   (let ((chan (if (pair? chan%) (car chan%) chan%)))
     (mutex-lock! (gochan-mutex chan))
-    (let ((front (gochan-front chan)))
+    (let ((buffer (gochan-buffer chan)))
       (cond
-       ((null? front) ;; receiving from empty gochan
+       ((queue-empty? buffer) ;; receiving from empty gochan
         (cond ((gochan-closed? chan)
                (mutex-unlock! (gochan-mutex chan))
                #f) ;; #f for fail
@@ -114,12 +104,10 @@
                (mutex-unlock! (gochan-mutex chan))
                #t)))
        (else
-        (gochan-front-set! chan (cdr front))
-        (if (null? (cdr front))
-            (gochan-rear-set! chan '()))
-        (mutex-unlock! (gochan-mutex chan))
-         ;; return associated userdata if present:
-        (cons (car front) (if (pair? chan%) (cdr chan%) '())))))))
+        (let ((datum (queue-remove! buffer)))
+          (mutex-unlock! (gochan-mutex chan))
+          ;; return associated userdata if present:
+          (cons datum (if (pair? chan%) (cdr chan%) '()))))))))
 
 ;; accept channel or list of channels. returns:
 ;; (list msg channel) on success,
