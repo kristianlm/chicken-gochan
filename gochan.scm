@@ -161,7 +161,7 @@
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
   (gochan-closed-set! c #t)
-  (%gochan-signal c)
+  (let loop () (if (%gochan-signal c) (loop)))
   (mutex-unlock! (gochan-mutex c)))
 
 ;; apply proc to each incoming msg as they appear on the channel,

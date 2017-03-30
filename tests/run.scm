@@ -144,6 +144,18 @@
    (0 'to)))
  )
 
+(test-group
+ "closing a channel will trigger all receivers"
+ (define result (gochan))
+ (define closing (gochan))
+ (thread-start! (lambda () (gochan-send result (receive (gochan-receive closing)))))
+ (thread-start! (lambda () (gochan-send result (receive (gochan-receive closing)))))
+ (thread-start! (lambda () (gochan-send result (receive (gochan-receive closing)))))
+
+ (thread-sleep! 0.1)
+ (gochan-close closing)
+ (test '(#f #f #f) (list-tabulate 3 (lambda (i) (gochan-receive result)))))
+
 (warning "stress-testing, this may take a few seconds ...")
 (test-group
  "stress test"
