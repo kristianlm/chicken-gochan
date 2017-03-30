@@ -6,7 +6,7 @@
 ;; Inspired by channels from goroutines.
 
 (use srfi-18
-     (only data-structures list->queue queue-add! queue-empty? queue-remove!))
+     (only data-structures list->queue queue-add! queue-empty? queue-remove! queue-length))
 
 (define-record-type gochan
   (%gochan mutex semaphores buffer closed?)
@@ -17,6 +17,13 @@
   (closed? gochan-closed? gochan-closed-set!))
 
 (define-record gochan-semaphore mutex cv)
+(define-record-printer gochan
+  (lambda (x p)
+    (display "#<gochan " p)
+    (display (queue-length (gochan-buffer x))  p)
+    (display "/" p)
+    (display (length (gochan-semaphores x))  p)
+    (display ">" p)))
 
 (define (cv-close! cv) (condition-variable-specific-set! cv #t))
 (define (cv-open! cv)  (condition-variable-specific-set! cv #f))
