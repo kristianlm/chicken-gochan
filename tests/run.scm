@@ -144,6 +144,7 @@
    (0 'to)))
  )
 
+(warning "stress-testing, this may take a few seconds ...")
 (test-group
  "stress test"
  (include "stress.scm")
