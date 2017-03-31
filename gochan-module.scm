@@ -12,6 +12,8 @@
 
                 gochan-select
                 gochan-select*
+
+                go ;; thread-start! wrapper for convenience
                 )
 (import chicken scheme)
 (include "gochan.scm"))

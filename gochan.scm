@@ -257,4 +257,7 @@
              (,(r '%gochan-select) ,@(reverse specs))
              ,timeout ,timeout-proc))))))
 
-
+(define-syntax go
+  (syntax-rules ()
+    ((_ body ...)
+     (thread-start! (lambda () body ...)))))
