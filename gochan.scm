@@ -134,7 +134,7 @@
     (begin (mutex-unlock! (gochan-mutex chan))
            (error "gochan closed" chan)))
 
-  (info " sending " obj " to " chan)
+  (info "sending " obj " to " chan)
   (if (%gochan-signal chan obj #t)
       (begin (info "chan signalled!")
              (mutex-unlock! (gochan-mutex chan)))
