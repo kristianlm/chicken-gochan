@@ -33,8 +33,8 @@
 ;; actually a condition-variable which can be signalled. we need the
 ;; state a semaphore provides for guarantees of the sender-end
 ;; "awaking" the receiving end.
-(define (make-semaphore name)
-  (let ((cv (make-condition-variable name)))
+(define (make-semaphore)
+  (let ((cv (make-condition-variable)))
     (cv-open! cv)
     (make-gochan-semaphore (make-mutex) cv)))
 
@@ -147,7 +147,7 @@
 ;; #t for timeout
 (define (gochan-receive* chans% timeout)
   (let ((chans (if (pair? chans%) chans% (list chans%)))
-        (semaphore (make-semaphore (current-thread))))
+        (semaphore (make-semaphore)))
 
     (let loop ((chans chans)
                (registered '())) ;; list of gochans that contain our semaphore
