@@ -25,7 +25,6 @@
 ;; useful for debugging
 (define (gochan-name chan) (mutex-name (gochan-mutex chan)))
 
-(define-record gochan-semaphore mutex cv ok)
 (define-record-printer gochan
   (lambda (x p)
     (display "#<gochan " p)
@@ -38,6 +37,7 @@
     (display (or (gochan-name x) "") p)
     (display ">" p)))
 
+(define-record gochan-semaphore mutex cv ok)
 
 ;; make a receiver semaphore. anyone can at any time signal it. but
 ;; once signalled, it cannot be re-signalled. each invocation of
