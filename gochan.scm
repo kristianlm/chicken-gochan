@@ -178,8 +178,13 @@
           (msg* => car) ;; normal msgpair
           (else (error "channels closed" chan)))))
 
+;; closing a closed channel yields in error (like in go)
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
+  (when (gochan-closed? c)
+    (mutex-unlock! (gochan-mutex c))
+    (error "gochan closed" c))
+
   (gochan-closed-set! c #t)
   (let loop () (if (%gochan-signal c) (loop)))
   (mutex-unlock! (gochan-mutex c)))
