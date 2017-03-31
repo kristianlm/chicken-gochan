@@ -106,7 +106,8 @@
 ;; (cons msg (cdr chan) if chan is pair (userdata)
 ;; (cons msg '()) if chain is gochan (no userdata)
 ;; userdata is useful for finding which channel a message came from.
-(define (gochan-receive** chan% semaphore)
+;; this function never blocks!
+(define (gochan-data/subscribe chan% semaphore)
   (let ((chan (if (pair? chan%) (car chan%) chan%)))
     (mutex-lock! (gochan-mutex chan))
     (let ((buffer (gochan-buffer chan)))
@@ -128,7 +129,7 @@
 
 ;; run through the channels' semaphores (queue) and remove any
 ;; instances of semaphore.
-(define (gochan-unregister! achan semaphore)
+(define (gochan-unsubscribe achan semaphore)
   (let ((chan (if (pair? achan) (car achan) achan)))
     (mutex-lock! (gochan-mutex chan))
     (let ((q (gochan-semaphores chan)))
@@ -152,7 +153,7 @@
                (registered '())) ;; list of gochans that contain our semaphore
       (if (pair? chans)
           (let* ((chan (car chans))
-                 (msgchan (gochan-receive** chan semaphore)))
+                 (msgchan (gochan-data/subscribe chan semaphore)))
             (cond ((pair? msgchan) msgchan)
                   ;; channel registered with semaphore
                   ((eq? #t msgchan)
@@ -166,7 +167,7 @@
                    ;; remove semaphore from all channels. gochan-send
                    ;; removes semaphore too, but we need to avoid
                    ;; leaks in case nobody sends.
-                   (for-each (lambda (chan) (gochan-unregister! chan semaphore)) registered)
+                   (for-each (lambda (chan) (gochan-unsubscribe chan semaphore)) registered)
 
                    (if wait-result
                        (gochan-receive* chans% timeout) ;; wait successful
