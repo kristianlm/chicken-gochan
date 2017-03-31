@@ -126,6 +126,20 @@
           ;; return associated userdata if present:
           (cons datum (if (pair? chan%) (cdr chan%) '()))))))))
 
+;; run through the channels' semaphores (queue) and remove any
+;; instances of semaphore.
+(define (gochan-unregister! achan semaphore)
+  (let ((chan (if (pair? achan) (car achan) achan)))
+    (mutex-lock! (gochan-mutex chan))
+    (let ((q (gochan-semaphores chan)))
+      (let loop ((n (queue-length q)))
+        (when (> n 0)
+          (let ((x (queue-remove! q)))
+            (if (eq? semaphore x)
+                (queue-add! q x)))
+          (loop (sub1 n)))))
+    (mutex-unlock! (gochan-mutex chan))))
+
 ;; accept channel or list of channels. returns:
 ;; (list msg channel) on success,
 ;; #f for all channels closed
@@ -135,22 +149,28 @@
         (semaphore (make-semaphore (current-thread))))
 
     (let loop ((chans chans)
-               (never-used? #t)) ;; anybody registered our semaphore?
+               (registered '())) ;; list of gochans that contain our semaphore
       (if (pair? chans)
           (let* ((chan (car chans))
                  (msgchan (gochan-receive** chan semaphore)))
             (cond ((pair? msgchan) msgchan)
                   ;; channel registered with semaphore
                   ((eq? #t msgchan)
-                   (loop (cdr chans) #f))
+                   (loop (cdr chans) (cons chan registered)))
                   ;; channel was closed!
-                  (else (loop (cdr chans) never-used?))))
+                  (else (loop (cdr chans) registered))))
           ;; we've run through all channels without a message.
-          (cond (never-used? #f) ;; all channels were closed
+          (cond ((null? registered) #f) ;; all channels were closed
                 (else ;; we have registered our semaphore with all channels
-                 (if (semaphore-wait! semaphore timeout)
-                     (gochan-receive* chans% timeout)
-                     #t))))))) ;;<-- timeout
+                 (let ((wait-result (semaphore-wait! semaphore timeout)))
+                   ;; remove semaphore from all channels. gochan-send
+                   ;; removes semaphore too, but we need to avoid
+                   ;; leaks in case nobody sends.
+                   (for-each (lambda (chan) (gochan-unregister! chan semaphore)) registered)
+
+                   (if wait-result
+                       (gochan-receive* chans% timeout) ;; wait successful
+                       #t)))))))) ;;<-- timeout
 
 (define (gochan-receive chan #!optional timeout)
   (let ((msg* (gochan-receive* chan timeout)))
