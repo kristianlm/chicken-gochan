@@ -1,5 +1,6 @@
 
 (module gochan (gochan
+                gochan-name ;; for debugging only, really
                 gochan-receive
                 gochan-receive*
                 gochan-send
