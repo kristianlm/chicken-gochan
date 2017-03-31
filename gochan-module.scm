@@ -14,6 +14,9 @@
                 gochan-select
                 gochan-select*
 
+                gochan-after
+                gochan-tick
+
                 go ;; thread-start! wrapper for convenience
                 )
 (import chicken scheme)

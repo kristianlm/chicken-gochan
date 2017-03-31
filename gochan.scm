@@ -22,6 +22,14 @@
   (buffer gochan-buffer)
   (closed? gochan-closed? gochan-closed-set!))
 
+;; everything about timers is immutable, so that's nice. each slot is
+;; a procedure which returns useful stuff.
+(define-record-type gochan-timer
+  (%gochan-timer whenproc closed?)
+  gochan-timer?
+  (whenproc gochan-timer-whenproc)
+  (closed? gochan-timer-closed?))
+
 ;; useful for debugging
 (define (gochan-name chan) (mutex-name (gochan-mutex chan)))
 
@@ -37,7 +45,31 @@
     (display (or (gochan-name x) "") p)
     (display ">" p)))
 
-(define-record gochan-semaphore mutex cv ok)
+(define-record-printer gochan-timer
+  (lambda (x p)
+    (display "#<gochan ⌛ " p)
+    (display (- ((gochan-timer-whenproc x)) (current-milliseconds)) p)
+    (display ">" p)))
+
+(define-record gochan-semaphore mutex cv ok when timer)
+
+(define (gochan-after duration_ms)
+  (let ((when (+ (current-milliseconds) duration_ms)))
+    (info "TIMER after created, will trigger at " when ", now " (current-milliseconds))
+    (%gochan-timer (lambda () when)
+                   (lambda () (let ((old when))
+                           (set! when #f)
+                           old)))))
+
+(define (gochan-tick duration_ms)
+  (let ((when (+ (current-milliseconds) duration_ms)))
+    (info "TIMER tick created, next trigger at " when ", now " (current-milliseconds))
+    (%gochan-timer (lambda () (info "TIMER  when " when) when)
+                   (lambda ()
+                     (info "TIMER tick next " when ", now " (current-milliseconds))
+                     (let ((old when))
+                       (set! when (+ when duration_ms))
+                       old)))))
 
 ;; make a receiver semaphore. anyone can at any time signal it. but
 ;; once signalled, it cannot be re-signalled. each invocation of
@@ -53,7 +85,8 @@
         (mx (make-mutex)))
     (condition-variable-specific-set! cv #f)
     (mutex-specific-set! mx #f)
-    (make-gochan-semaphore mx cv #f)))
+    ;;                           ok  when timer
+    (make-gochan-semaphore mx cv #f  #f   #f)))
 
 ;; returns #t on successful signal, #f if semaphore was already
 ;; signalled.
@@ -72,30 +105,65 @@
           (mutex-unlock! (gochan-semaphore-mutex semaphore))
           #f)))) ;; already signalled
 
+
+;; sets the timeout for semaphore to `when`, unless an earlier timeout
+;; has already been set.
+(define (semaphore-register-timeout! semaphore when timer)
+  (assert (number? when))
+  (assert (gochan-timer? timer))
+
+  (mutex-lock! (gochan-semaphore-mutex semaphore))
+  (let ((old-when (gochan-semaphore-when semaphore)))
+    (if (or (not old-when)
+            (< when old-when))
+        (begin
+          (info "semaphore gets a closer timeout " timer)
+          (gochan-semaphore-when-set! semaphore when)
+          (gochan-semaphore-timer-set! semaphore timer))))
+  (mutex-unlock! (gochan-semaphore-mutex semaphore))
+  (void))
+
 ;; wait (if necessary) for semaphore to be signalled by someone
 ;; else. if the semaphore is already been signalled, returns
 ;; immediately. returns 3 values:
 ;;
 ;; (data sender ok)
 ;;
-;; a sender of #f means timeout. if ok is #f, data is also #f.
-(define (semaphore-wait! semaphore timeout)
+;; sender may be a gochan-timer record and not a real gochan. if ok is
+;; #f, data is also #f.
+(define (semaphore-wait! semaphore)
+
   (mutex-lock! (gochan-semaphore-mutex semaphore))
-  (info "waiting for " semaphore " for " timeout "s")
+
   (let ((cv (gochan-semaphore-cv semaphore)))
+
+    (define (data)
+      (values (mutex-specific (gochan-semaphore-mutex semaphore))
+              (condition-variable-specific cv)
+              (gochan-semaphore-ok semaphore)))
+
     (if (condition-variable-specific cv)
         ;; signalled already!
         (begin (mutex-unlock! (gochan-semaphore-mutex semaphore))
-               (values (mutex-specific (gochan-semaphore-mutex semaphore))
-                       (condition-variable-specific cv)
-                       (gochan-semaphore-ok semaphore)))
+               (data))
         ;; not signalled yet, wait
-        (if (mutex-unlock! (gochan-semaphore-mutex semaphore) cv timeout)
-            (values (mutex-specific (gochan-semaphore-mutex semaphore))
-                    (condition-variable-specific cv)
-                    (gochan-semaphore-ok semaphore))
-            ;; mutex-unlock timed out! we have no sender
-            (values #f #f #f)))))
+        (let* ((when (gochan-semaphore-when semaphore)))
+          (if when ;; <-- milliseconds into the future or #f
+              (let ((timer (gochan-semaphore-timer semaphore))
+                    (timeout (/ (- when (current-milliseconds)) 1000.0)))
+                (info "waiting for " semaphore " with timer " timer " in " timeout "ms")
+                (if (> timeout 0)
+                    (if (mutex-unlock! (gochan-semaphore-mutex semaphore) cv timeout)
+                        (data)
+                        ;; mutex-unlock timed out, so sender is the special timer channel
+                        (values #f timer #t))
+                    (begin (info "already timed out")
+                     (values #f timer #t))))
+              (begin
+                (info "waiting for " semaphore " without timer")
+                (if (mutex-unlock! (gochan-semaphore-mutex semaphore) cv)
+                    (data)
+                    (error "internal error: mutex-unlock! timeout without timeout argument"))))))))
 
 ;; capacity is the buffer-capacity in number of messages. 0 means
 ;; locks-step.
@@ -208,7 +276,7 @@
 
 ;; accept channel or list of channels. returns 3 values like semaphore-wait!
 ;; (data chan closed) on success,
-(define (gochan-receive* chans% timeout)
+(define (gochan-receive* chans%)
   (let ((chans (if (pair? chans%) chans% (list chans%)))
         (semaphore (make-semaphore)))
 
@@ -216,21 +284,25 @@
                (registered '())) ;; list of gochans that contain our semaphore
       (if (pair? chans)
           (let* ((chan (car chans)))
-            (if (gochan-subscribe chan semaphore)
-                ;; channel registered with semaphore
-                (begin
-                  (condition-variable-signal! (gochan-cv-send chan))
-                  (loop (cdr chans) (cons chan registered)))
-                ;; semaphore was not registered with channel, there is
-                ;; data ready on semaphore. so no need to check the
-                ;; remaining channels for data
-                (loop '() registered)))
+            (if (gochan? chan)
+                (if (gochan-subscribe chan semaphore)
+                    ;; channel registered with semaphore
+                    (begin
+                      (condition-variable-signal! (gochan-cv-send chan))
+                      (loop (cdr chans) (cons chan registered)))
+                    ;; semaphore was not registered with channel, there is
+                    ;; data ready on semaphore. so no need to check the
+                    ;; remaining channels for data
+                    (loop '() registered))
+                ;; assuming it's a gochan-timer then, mention it to the semaphore
+                (begin (semaphore-register-timeout! semaphore ((gochan-timer-whenproc chan)) chan)
+                       (loop (cdr chans) registered))))
           ;; we've run through all channels. our semaphore may or may
           ;; not contain data.
           (begin
             ;; we have registered our semaphore with all channels
             (info "registered with " registered " other channels")
-            (receive (data sender ok) (semaphore-wait! semaphore timeout)
+            (receive (data sender ok) (semaphore-wait! semaphore)
               (info "data from semaphore-wait!: " data (if ok " (ok)" " (closed)"))
               ;; remove semaphore from all channels. gochan-send
               ;; removes semaphore too, but we need to avoid
@@ -241,8 +313,8 @@
 
 ;; receive a message from chan. returns 2 values:
 ;; (data ok)
-(define (gochan-receive chan #!optional timeout)
-  (receive (msg sender ok) (gochan-receive* chan timeout)
+(define (gochan-receive chan)
+  (receive (msg sender ok) (gochan-receive* chan)
     (values msg ok)))
 
 ;; close channel. note that closing a closed channel yields in error
@@ -266,24 +338,22 @@
 ;; a list of channels.
 (define (gochan-for-each c proc)
   (let loop ()
-    (receive (msg chan ok) (gochan-receive* c #f)
+    (receive (msg chan ok) (gochan-receive* c)
       (when ok
         (proc msg)
         (loop)))))
 
 (define (gochan-fold chans proc initial)
   (let loop ((state initial))
-    (receive (msg chan ok) (gochan-receive* chans #f)
+    (receive (msg chan ok) (gochan-receive* chans)
       (if ok
           (loop (proc msg state))
           state))))
 
-(define (gochan-select* chan.proc-alist timeout timeout-proc)
-  (receive (msg chan ok) (gochan-receive* chan.proc-alist timeout)
-    (if chan
-        (cond ((assoc chan chan.proc-alist) => (lambda (pair) ((cdr pair) msg #| ok |#)))
-              (else (error "internal error: chan not found in " chan.proc-alist)))
-        (timeout-proc))))
+(define (gochan-select* chan.proc-alist)
+  (receive (msg chan ok) (gochan-receive* (map car chan.proc-alist))
+    (cond ((assoc chan chan.proc-alist) => (lambda (pair) ((cdr pair) msg ok)))
+          (else (error "internal error: chan not found in " chan.proc-alist)))))
 
 ;; (gochan-select
 ;;  (c1 msg body ...)
@@ -295,36 +365,25 @@
 ;;        (cons (cons c2 (lambda (obj) body ...)) '()))
 ;;  10 (lambda () timeout-body ...))
 
-(define-syntax %gochan-select
+
+;; turn gochan-select form into ((chan1 . proc1) (chan2 . proc2) ...)
+(define-syntax gochan-select-alist
   (syntax-rules ()
-    ((_ (channel varname body ...) rest ...)
-     (cons (cons channel (lambda (varname) body ...))
-           (%gochan-select rest ...)))
+    ;; without optional status variable
+    ((_ ((channel varname) body ...) rest ...)
+     (cons (cons channel (lambda (varname _) body ...))
+           (gochan-select-alist rest ...)))
+    ;; with optional status variable
+    ((_ ((channel varname ok) body ...) rest ...)
+     (cons (cons channel (lambda (varname ok) body ...))
+           (gochan-select-alist rest ...)))
+
     ((_) '())))
 
 (define-syntax gochan-select
-  (er-macro-transformer
-   (lambda (x r t)
-     (let loop ((forms (cdr x)) ;; original specs+timeout
-                (timeout #f)
-                (timeout-proc #f)
-                (specs '())) ;; non-timeout specs
-       (if (pair? forms)
-           (let ((spec (car forms)))
-             (if (number? (car spec))
-                 (if timeout
-                     (error "multiple timeouts specified" spec)
-                     (loop (cdr forms)
-                           (car spec)           ;; timeout in seconds
-                           `(lambda () ,@(cdr spec)) ;; timeout body
-                           specs))
-                 (loop (cdr forms)
-                       timeout timeout-proc
-                       (cons spec specs))))
-
-           `(,(r 'gochan-select*)
-             (,(r '%gochan-select) ,@(reverse specs))
-             ,timeout ,timeout-proc))))))
+  (syntax-rules ()
+    ((_ form ...)
+     (gochan-select* (gochan-select-alist form ...)))))
 
 (define-syntax go
   (syntax-rules ()

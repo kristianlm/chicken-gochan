@@ -11,14 +11,10 @@
  (test "closed?" #t (gochan-closed? c))
  (test-error "send to closed gochan fails" (gochan-send c 'three))
 
- (test "closed channel keeps buffer" 'two        (gochan-receive c))
- (test "gochan-receive*"             'three      (gochan-receive* c #f))
+ (test "closed channel keeps buffer"        '(two   #t) (receive (gochan-receive c)))
+ (test "closed channel really keeps buffer" '(three #t) (receive (gochan-receive c)))
 
- (test "recving from closed and empty gochan" #f (gochan-receive c) )
-
- (test "gochan-receive* #f when closed" #f (gochan-receive* c #f))
- (test "on-closed unlocks mutex"        #f (gochan-receive* c #f))
-
+ (test "recving from closed and empty gochan" '(#f #f) (receive (gochan-receive c)) )
  )
 
 (test-group
@@ -122,7 +118,7 @@
 
  (define (next)
    (gochan-select
-    (c1 msg (list "c1" msg))))
+    ((c1 msg) (list "c1" msg))))
 
  (test "gochan-select 1" '("c1" 1) (next))
  (test "gochan-select 2" '("c1" 2) (next))
@@ -131,28 +127,36 @@
 
 (test-group
  "timeouts"
-
- (test "immediate timeout" '(#f #f #f) (receive (gochan-receive* (gochan 0) 0)))
- ;; g(test "timeout error" (gochan-receive (gochan 0) 0))
-
+ (define t (gochan-after 0))
  (define c (gochan 0))
- (define workers (map thread-start! (make-list 4 (lambda () (gochan-receive* c 0.1)))))
-
- ;;(test "simultaneous timeouts" '(#t #t #t #t) (map thread-join! workers))
-
-
- ;;(test 'timeout (gochan-select (c msg (error "from c1" msg)) (0.1 'timeout)))
+ (test "immediate timeout" 'timeout
+       (gochan-select ((c msg) 'something)
+                      ((t msg) 'timeout)))
 
 
- (define cclosed (gochan 0))
- (gochan-close cclosed)
+ (define workers
+   (map thread-start!
+        (make-list 4 (lambda () (gochan-select
+                            ((c msg) 'data!)
+                            ((t msg) 'to))))))
+
+ (test "simultaneous timeouts" '(to to to to) (map thread-join! workers))
+
+ (define duration
+   (let ((start (current-milliseconds)))
+     (gochan-select ( [(gochan-after 100) msg ok] ok))
+     (- (current-milliseconds) start)))
+
+ (test "sensible timeout duration wall-time 1" #t (> duration  90))
+ (test "sensible timeout duration wall-time 2" #t (< duration 110)))
+
+(test-group
+ "closed channels"
+ (define chan-closed (gochan 0))
+ (gochan-close chan-closed)
  (test
   "closed channel still produces values"
-  #f ;; from msg
-  (gochan-select
-   (cclosed msg msg)
-   (0 'to)))
- )
+  '(#f #f) (gochan-select ((chan-closed msg ok) (list msg ok)))))
 
 (test-group
  "closing a channel will trigger all receivers"
