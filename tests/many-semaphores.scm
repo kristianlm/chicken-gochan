@@ -8,7 +8,7 @@
 ;; csi -s tests/many-semaphores.scm -:h32M
 (use gochan)
 
-(define chan (gochan))
+(define chan (gochan 1024))
 (let loop ()
   ;; registers a (new?) semaphore per loop. 0 timeout to make it loop
   ;; fast. memory consumption shouldn't grow on this one!

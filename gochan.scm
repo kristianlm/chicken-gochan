@@ -6,45 +6,65 @@
 ;; Inspired by channels from goroutines.
 
 (use srfi-18
-     (only data-structures list->queue queue-add! queue-empty? queue-remove! queue-length))
+     (only data-structures list->queue queue->list
+           queue-add! queue-empty? queue-remove! queue-first queue-length))
+
+(define (info . args) (void))
+;;(define (info . args) (apply print (cons (current-thread) (cons " " args))))
 
 (define-record-type gochan
-  (%gochan mutex semaphores buffer closed?)
+  (%gochan mutex cap cv-send semaphores buffer closed?)
   gochan?
   (mutex gochan-mutex gochan-mutex-set!)
   (semaphores gochan-semaphores)
+  (cv-send    gochan-cv-send)
+  (cap        gochan-cap)
   (buffer gochan-buffer)
   (closed? gochan-closed? gochan-closed-set!))
 
-(define-record gochan-semaphore mutex cv)
+;; useful for debugging
+(define (gochan-name chan) (mutex-name (gochan-mutex chan)))
+
+(define-record gochan-semaphore mutex cv closed)
 (define-record-printer gochan
   (lambda (x p)
     (display "#<gochan " p)
     (display (queue-length (gochan-buffer x))  p)
     (display "/" p)
+    (display (gochan-cap x)  p)
+    (display " (" p)
     (display (queue-length (gochan-semaphores x))  p)
+    (display ") " p)
+    (display (or (gochan-name x) "") p)
     (display ">" p)))
 
-(define (cv-close! cv) (condition-variable-specific-set! cv #t))
-(define (cv-open! cv)  (condition-variable-specific-set! cv #f))
-(define (cv-open? cv)  (eq? #f (condition-variable-specific cv)))
 
-;; make a binary open/closed semaphore. default state is open.
-;; actually a condition-variable which can be signalled. we need the
-;; state a semaphore provides for guarantees of the sender-end
-;; "awaking" the receiving end.
+;; make a receiver semaphore. anyone can at any time signal it. but
+;; once signalled, it cannot be re-signalled. each invocation of
+;; gochan-receive* and friends will make such a semaphore, and block
+;; on it. these provide for a guarantee of the sender-end "awaking"
+;; the receiving end, that no data gets lots and that there is only
+;; one receiver.
+;;
+;; note that a semaphore is used to both awaken a receiver and carry
+;; data and metadata.
 (define (make-semaphore)
-  (let ((cv (make-condition-variable)))
-    (cv-open! cv)
-    (make-gochan-semaphore (make-mutex) cv)))
+  (let ((cv (make-condition-variable))
+        (mx (make-mutex)))
+    (condition-variable-specific-set! cv #f)
+    (mutex-specific-set! mx #f)
+    (make-gochan-semaphore mx cv #f)))
 
 ;; returns #t on successful signal, #f if semaphore was already
-;; closed.
-(define (semaphore-signal! semaphore)
+;; signalled.
+(define (semaphore-signal! semaphore obj sender closed)
+  (info "signalling " semaphore " from " sender)
   (mutex-lock! (gochan-semaphore-mutex semaphore))
   (let ((cv (gochan-semaphore-cv semaphore)))
-   (cond ((cv-open? cv)
-          (cv-close! cv)
+   (cond ((eq? #f (condition-variable-specific cv))
+          (condition-variable-specific-set! cv sender)
+          (mutex-specific-set! (gochan-semaphore-mutex semaphore) obj)
+          (gochan-semaphore-closed-set! semaphore closed)
           (condition-variable-signal! cv) ;; triggers receiver
           (mutex-unlock! (gochan-semaphore-mutex semaphore))
           #t)
@@ -52,84 +72,128 @@
           (mutex-unlock! (gochan-semaphore-mutex semaphore))
           #f)))) ;; already signalled
 
-;; wait for semaphore to close. #f means timeout, #t otherwise.
+;; wait (if necessary) for semaphore to be signalled by someone
+;; else. if the semaphore is already been signalled, returns
+;; immediately. returns 3 values:
+;;
+;; (data sender closed)
+;;
+;; a sender of #f means timeout. if closed is #t, data is #f.
 (define (semaphore-wait! semaphore timeout)
   (mutex-lock! (gochan-semaphore-mutex semaphore))
+  (info "waiting for " semaphore " for " timeout "s")
   (let ((cv (gochan-semaphore-cv semaphore)))
-   (cond ((cv-open? cv)
-          (mutex-unlock! (gochan-semaphore-mutex semaphore)
-                         cv timeout)) ;; <-- #f on timeout
-         (else
-          (mutex-unlock! (gochan-semaphore-mutex semaphore))
-          #t)))) ;; already signalled
+    (if (condition-variable-specific cv)
+        ;; signalled already!
+        (begin (mutex-unlock! (gochan-semaphore-mutex semaphore))
+               (values (mutex-specific (gochan-semaphore-mutex semaphore))
+                       (condition-variable-specific cv)
+                       (gochan-semaphore-closed semaphore)))
+        ;; not signalled yet, wait
+        (if (mutex-unlock! (gochan-semaphore-mutex semaphore) cv timeout)
+            (values (mutex-specific (gochan-semaphore-mutex semaphore))
+                    (condition-variable-specific cv)
+                    (gochan-semaphore-closed semaphore))
+            ;; mutex-unlock timed out! we have no sender
+            (values #f #f #f)))))
 
-(define (gochan . items)
-  (%gochan (make-mutex)        ;; mutex
-           (list->queue '())   ;; semaphores
-           (list->queue items) ;; buffer
-           #f))                ;; not closed
+;; capacity is the buffer-capacity in number of messages. 0 means
+;; locks-step.
+(define (gochan capacity #!key (initial '()) (name #f))
+  (assert (fixnum? capacity))
+  (assert (list? initial))
+  (%gochan (make-mutex name)         ;; mutex
+           capacity                  ;; cap
+           (make-condition-variable) ;; cv-send
+           (list->queue '())         ;; semaphores
+           (list->queue initial)     ;; buffer
+           #f))                      ;; closed?
 
 ;; try to send a signal to a single semaphore/receiver who has
 ;; registered with chan. returns:
-;; - #t if someone was signalled, awakened and thus message will be picked up
+;; - #t if someone was signalled, awakened and thus delivered
 ;; - #f otherwise, nobody was there to receive :(
 ;; this must be called in a locked gochan mutex context.
-(define (%gochan-signal c)
+(define (%gochan-signal c obj closed)
   (let ((semaphores (gochan-semaphores c)))
     (let loop ()
       (if (queue-empty? semaphores)
           #f
-          (if (semaphore-signal! (queue-remove! semaphores))
+          (if (semaphore-signal! (queue-remove! semaphores) obj c closed)
               ;; signaled, great success!
-              #t
+              (begin (info "semaphore signalled (is now " (queue->list semaphores) ")") #t)
               ;; not signalled, so somebody else signalled the
               ;; semaphore. keep trying.
               (loop))))))
 
+;; send obj on channel. if buffer if alread full (ie buffer-size >=
+;; cap), block until somebody starts a receive on channel.
 (define (gochan-send chan obj)
   (mutex-lock! (gochan-mutex chan))
   (when (gochan-closed? chan)
     (begin (mutex-unlock! (gochan-mutex chan))
            (error "gochan closed" chan)))
 
-  (queue-add! (gochan-buffer chan) obj)
+  (info " sending " obj " to " chan)
+  (if (%gochan-signal chan obj #f)
+      (begin (info "chan signalled!")
+             (mutex-unlock! (gochan-mutex chan)))
+      ;; unable to signal any receivers directly:
+      (if (> (gochan-cap chan) (queue-length (gochan-buffer chan)))
+          ;; chan isn't full, just queue obj and return immediately
+          (begin (info "chan buffer push")
+                 (queue-add! (gochan-buffer chan) obj)
+                 (mutex-unlock! (gochan-mutex chan)))
+          ;; chan is full :-( wait for somebody to receive and retry.
+          (begin (info "chan full, waiting")
+                 (mutex-unlock! (gochan-mutex chan) (gochan-cv-send chan))
+                 (gochan-send chan obj)))))
 
-  (%gochan-signal chan)
 
-  ;; TODO: handle no semaphores and unbuffered channel
-
-  (mutex-unlock! (gochan-mutex chan))
-  (void))
-
+;; register semaphore on channel %chan or signal the semaphore if
+;; the channel had data available.
 ;; returns:
-;; #f if channel closed
-;; #t if registered with semaphore
-;; (cons msg (cdr chan) if chan is pair (userdata)
-;; (cons msg '()) if chain is gochan (no userdata)
-;; userdata is useful for finding which channel a message came from.
+;; #t if semaphore was registered with channel (chan had no data)
+;; #f if semaphore was not regsitered with channel (chan had data)
 ;; this function never blocks!
-(define (gochan-data/subscribe chan% semaphore)
+;; it's important that you unregister semaphore on channels as
+;; cleanup, so we don't leak them.
+(define (gochan-subscribe chan% semaphore)
   (let ((chan (if (pair? chan%) (car chan%) chan%)))
     (mutex-lock! (gochan-mutex chan))
+    (info "looking for data in " chan)
     (let ((buffer (gochan-buffer chan)))
-      (cond
-       ((queue-empty? buffer) ;; receiving from empty gochan
-        (cond ((gochan-closed? chan)
-               (mutex-unlock! (gochan-mutex chan))
-               #f) ;; #f for fail
-              (else
-               ;; register semaphore with channel
-               (queue-add! (gochan-semaphores chan) semaphore)
-               (mutex-unlock! (gochan-mutex chan))
-               #t)))
-       (else
-        (let ((datum (queue-remove! buffer)))
-          (mutex-unlock! (gochan-mutex chan))
-          ;; return associated userdata if present:
-          (cons datum (if (pair? chan%) (cdr chan%) '()))))))))
+      (if (queue-empty? buffer)
+          (if (gochan-closed? chan)
+              ;; receiving from empty and closed gochan
+              (begin (semaphore-signal! semaphore #f chan #t)
+                     (mutex-unlock! (gochan-mutex chan))
+                     #f) ;; TODO #t for keep going for now
+              (begin
+                ;; receiving from empty and open gochan, register
+                ;; semaphore with channel
+                (info semaphore " subscribing to " chan)
+                (queue-add! (gochan-semaphores chan) semaphore)
+                (mutex-unlock! (gochan-mutex chan))
+                #t))
+          ;; there's data already available, move it safely into the
+          ;; semaphore signal.
+          (let ((data (queue-first buffer)))
+            (if (semaphore-signal! semaphore data chan #f)
+                ;; semaphore was signalled successfully:
+                (begin (info chan " popped and signalled successfully " data)
+                       (queue-remove! buffer)
+                       ;; unblock channel's sender, if any:
+                       (condition-variable-signal! (gochan-cv-send chan))
+                       (mutex-unlock! (gochan-mutex chan))
+                       #f)
+                ;; semaphore was already signalled by someone else,
+                ;; leave data in buffer.
+                (begin (mutex-unlock! (gochan-mutex chan))
+                       #f)))))))
 
 ;; run through the channels' semaphores (queue) and remove any
-;; instances of semaphore.
+;; instances of `semaphore`.
 (define (gochan-unsubscribe achan semaphore)
   (let ((chan (if (pair? achan) (car achan) achan)))
     (mutex-lock! (gochan-mutex chan))
@@ -142,10 +206,8 @@
           (loop (sub1 n)))))
     (mutex-unlock! (gochan-mutex chan))))
 
-;; accept channel or list of channels. returns:
-;; (list msg channel) on success,
-;; #f for all channels closed
-;; #t for timeout
+;; accept channel or list of channels. returns 3 values like semaphore-wait!
+;; (data chan closed) on success,
 (define (gochan-receive* chans% timeout)
   (let ((chans (if (pair? chans%) chans% (list chans%)))
         (semaphore (make-semaphore)))
@@ -153,68 +215,75 @@
     (let loop ((chans chans)
                (registered '())) ;; list of gochans that contain our semaphore
       (if (pair? chans)
-          (let* ((chan (car chans))
-                 (msgchan (gochan-data/subscribe chan semaphore)))
-            (cond ((pair? msgchan) msgchan)
-                  ;; channel registered with semaphore
-                  ((eq? #t msgchan)
-                   (loop (cdr chans) (cons chan registered)))
-                  ;; channel was closed!
-                  (else (loop (cdr chans) registered))))
-          ;; we've run through all channels without a message.
-          (cond ((null? registered) #f) ;; all channels were closed
-                (else ;; we have registered our semaphore with all channels
-                 (let ((wait-result (semaphore-wait! semaphore timeout)))
-                   ;; remove semaphore from all channels. gochan-send
-                   ;; removes semaphore too, but we need to avoid
-                   ;; leaks in case nobody sends.
-                   (for-each (lambda (chan) (gochan-unsubscribe chan semaphore)) registered)
+          (let* ((chan (car chans)))
+            (if (gochan-subscribe chan semaphore)
+                ;; channel registered with semaphore
+                (begin
+                  (condition-variable-signal! (gochan-cv-send chan))
+                  (loop (cdr chans) (cons chan registered)))
+                ;; semaphore was not registered with channel, there is
+                ;; data ready on semaphore. so no need to check the
+                ;; remaining channels for data
+                (loop '() registered)))
+          ;; we've run through all channels. our semaphore may or may
+          ;; not contain data.
+          (begin
+            ;; we have registered our semaphore with all channels
+            (info "registered with " registered " other channels")
+            (receive (data sender closed?) (semaphore-wait! semaphore timeout)
+              (info "data from semaphore-wait!: " data (if closed? " (closed)" " (open)"))
+              ;; remove semaphore from all channels. gochan-send
+              ;; removes semaphore too, but we need to avoid
+              ;; leaks in case nobody sends.
+              (for-each (lambda (chan) (gochan-unsubscribe chan semaphore)) registered)
 
-                   (if wait-result
-                       (gochan-receive* chans% timeout) ;; wait successful
-                       #t)))))))) ;;<-- timeout
+              (values data sender closed?)))))))
 
+;; receive a message from chan. returns 2 values:
+;; (data closed)
 (define (gochan-receive chan #!optional timeout)
-  (let ((msg* (gochan-receive* chan timeout)))
-    (cond ((eq? msg* #t) (error "timeout" chan))
-          (msg* => car) ;; normal msgpair
-          (else (error "channels closed" chan)))))
+  (receive (msg sender closed) (gochan-receive* chan timeout)
+    (values msg closed)))
 
-;; closing a closed channel yields in error (like in go)
+;; close channel. note that closing a closed channel yields in error
+;; (like in go)
 (define (gochan-close c)
   (mutex-lock! (gochan-mutex c))
   (when (gochan-closed? c)
     (mutex-unlock! (gochan-mutex c))
     (error "gochan closed" c))
 
+  (info "closing " c " with semaphores " (queue->list (gochan-semaphores c)))
   (gochan-closed-set! c #t)
-  (let loop () (if (%gochan-signal c) (loop)))
+  ;; signal *everybody* that we're closing (waking them all up,
+  ;; because now there are tons of #f-messages available to them)
+  (let loop () (if (%gochan-signal c #f #t) (loop)))
+
   (mutex-unlock! (gochan-mutex c)))
 
 ;; apply proc to each incoming msg as they appear on the channel,
-;; return (void) when channel is emptied and closed.
+;; return (void) when channel is emptied and closed. don't use this on
+;; a list of channels.
 (define (gochan-for-each c proc)
   (let loop ()
-    (cond ((gochan-receive* c #f) =>
-           (lambda (msg)
-             (proc (car msg))
-             (loop))))))
+    (receive (msg chan closed) (gochan-receive* c #f)
+      (unless closed
+        (proc msg)
+        (loop)))))
 
 (define (gochan-fold chans proc initial)
   (let loop ((state initial))
-    (cond ((gochan-receive* chans #f) =>
-           (lambda (msg)
-             (loop (proc (car msg) state))))
-          (else state))))
+    (receive (msg chan closed) (gochan-receive* chans #f)
+      (if closed
+          state
+          (loop (proc msg state))))))
 
 (define (gochan-select* chan.proc-alist timeout timeout-proc)
-  (let ((msgpair (gochan-receive* chan.proc-alist timeout)))
-    (cond ((eq? #t msgpair) (timeout-proc)) ;; <-- timeout
-          (msgpair
-           (let ((msg (car msgpair))
-                 (proc (cdr msgpair)))
-             (proc msg)))
-          (else (error "channels closed" chan.proc-alist)))))
+  (receive (msg chan closed) (gochan-receive* chan.proc-alist timeout)
+    (if chan
+        (cond ((assoc chan chan.proc-alist) => (lambda (pair) ((cdr pair) msg #| closed |#)))
+              (else (error "internal error: chan not found in " chan.proc-alist)))
+        (timeout-proc))))
 
 ;; (gochan-select
 ;;  (c1 msg body ...)
