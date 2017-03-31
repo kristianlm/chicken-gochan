@@ -65,14 +65,15 @@
 
 (define (gochan . items)
   (%gochan (make-mutex)        ;; mutex
-           (list->queue '())   ;; condition variables
+           (list->queue '())   ;; semaphores
            (list->queue items) ;; buffer
            #f))                ;; not closed
 
-;; try to send a signal to anyone who has registered with
-;; chan. returns #t if someone was signalled (and thus awakened),
-;; return #f otherwise. this must be called in a locked gochan mutex
-;; context.
+;; try to send a signal to a single semaphore/receiver who has
+;; registered with chan. returns:
+;; - #t if someone was signalled, awakened and thus message will be picked up
+;; - #f otherwise, nobody was there to receive :(
+;; this must be called in a locked gochan mutex context.
 (define (%gochan-signal c)
   (let ((semaphores (gochan-semaphores c)))
     (let loop ()
