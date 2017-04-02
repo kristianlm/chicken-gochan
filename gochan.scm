@@ -374,3 +374,33 @@
   (syntax-rules ()
     ((_ body ...)
      (thread-start! (lambda () body ...)))))
+
+;; turn gochan-select form into `((,chan1 . ,proc1) (,chan2 . ,proc2) ...)
+(define-syntax gochan-select-alist
+  (syntax-rules (-> <-)
+    ;; without any variables
+    ((_ ((channel) body ...) rest ...)
+     `((,channel ,(lambda (_ _) body ...))
+       ,@(gochan-select-alist rest ...)))
+    ;; without optional status variable
+    ((_ ((channel -> varname) body ...) rest ...)
+     `((,channel ,(lambda (varname _) body ...))
+       ,@(gochan-select-alist rest ...)))
+    ;; with optional status variable
+    ((_ ((channel -> varname ok) body ...) rest ...)
+     `((,channel ,(lambda (varname ok) body ...))
+       ,@(gochan-select-alist rest ...)))
+
+    ((_ ((channel <- msg) body ...) rest ...)
+     `((,channel ,(lambda () body ...) ,msg)
+       ,@(gochan-select-alist rest ...)))
+
+    ((_) '())))
+
+(define-syntax gochan-select
+  (syntax-rules ()
+    ((_ form ...)
+     (receive (msg ok meta)
+         (gochan-select* (gochan-select-alist form ...))
+       (meta msg ok)))))
+

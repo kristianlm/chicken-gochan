@@ -7,6 +7,7 @@
                 gochan-close
 
                 gochan-select*
+                gochan-select
 
                 gochan-after
                 gochan-tick
