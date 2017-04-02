@@ -1,13 +1,20 @@
 (use gochan)
 
-
 (define c (gochan-tick 1000))
-(define d (gochan 0))
 
-(go (print "go1" (gochan-receive c)) (gochan-send d #t))
-(go (print "go2" (gochan-receive c)) (gochan-send d #t))
-(go (print "go3" (gochan-receive c)) (gochan-send d #t))
+(define t1
+  (go (gochan-select ((c -> msg) (print "go1 c says " msg)))
+      (gochan-select ((c -> msg) (print "go1 c says " msg)))
+      (gochan-select ((c -> msg) (print "go1 c says " msg)))))
 
-(print "done: " (gochan-receive d))
-(print "done: " (gochan-receive d))
-(print "done: " (gochan-receive d))
+(define t2
+  (go (gochan-select ((c -> msg) (print "go2 c says " msg)))
+      (gochan-select ((c -> msg) (print "go2 c says " msg)))
+      (gochan-select ((c -> msg) (print "go2 c says " msg)))))
+
+(define t3
+  (go (gochan-select ((c -> msg) (print "go3 c says " msg)))
+      (gochan-select ((c -> msg) (print "go3 c says " msg)))
+      (gochan-select ((c -> msg) (print "go3 c says " msg)))))
+
+(for-each thread-join! (list t1 t2 t3))
