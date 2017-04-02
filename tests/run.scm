@@ -8,6 +8,13 @@
 ;; - unbuffered send&recv on channel
 
 (test-group
+ "unbuffered 1 channel gochan-select* meta"
+ (define chan (gochan 0))
+ (go (gochan-send chan 'hello))
+ ;;      msg   ok meta
+ (test '(hello #t meta!) (receive (gochan-select* `((,chan meta!))))))
+
+(test-group
  "unbuffered 1 channel fifo, primordial first"
 
  (define chan (gochan 0))
