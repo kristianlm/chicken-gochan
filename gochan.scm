@@ -252,6 +252,33 @@
       (info timer " is no longer with us"))
   (mutex-unlock! (gotimer-mutex timer)))
 
+(define (%remove-queue-item q semaphore)
+  (let loop ((n (queue-length q)))
+    (when (> n 0)
+      (let ((sub (queue-remove! q)))
+        (unless (eq? semaphore (car sub))
+          (queue-add! q sub)))
+      (loop (sub1 n)))))
+
+;; run through the channels' semaphores (queue) and remove any
+;; instances of `semaphore`.
+(define (gochan-unsubscribe-senders chan semaphore)
+  (mutex-lock! (gochan-mutex chan))
+  (%remove-queue-item (gochan-senders chan) semaphore)
+  (mutex-unlock! (gochan-mutex chan)))
+
+(define (gochan-unsubscribe-receivers chan semaphore)
+  (mutex-lock! (gochan-mutex chan))
+  (info "unsubscribing " chan)
+  (%remove-queue-item (gochan-receivers chan) semaphore)
+  (mutex-unlock! (gochan-mutex chan)))
+
+(define (gochan-unsubscribe-timers chan semaphore)
+  (mutex-lock! (gotimer-mutex chan))
+  (%remove-queue-item (gotimer-receivers chan) semaphore)
+  (mutex-unlock! (gotimer-mutex chan)))
+
+
 
 ;; the heart of it all! takes input that looks like this:
 ;;
@@ -354,8 +381,14 @@
                 (begin (info "no need to wait, data already there")
                        (mutex-unlock! (gosem-mutex semaphore))))
 
-            ;; TODO: cleanup dangling subscriptions
-            ;; (for-each (lambda (achan) (gochan-unsubscribe (car achan) semaphore)) achans)
+            ;; it's important that we remove our semaphore from
+            ;; wherever it may be registered so we don't leak it. it
+            ;; wouldn't get cleared out otherwise until someone else
+            ;; tries to signal it - which may or may not happen
+            (for-each (lambda (chan) (gochan-unsubscribe-senders chan semaphore))   sendsub)
+            (for-each (lambda (chan) (gochan-unsubscribe-receivers chan semaphore)) recvsub)
+            (for-each (lambda (chan) (gochan-unsubscribe-timers chan semaphore))    timesub)
+
             (assert (gosem-meta semaphore)) ;; just to make sure
             (values (gosem-data semaphore)
                     (gosem-ok   semaphore)
