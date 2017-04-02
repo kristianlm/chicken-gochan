@@ -11,7 +11,7 @@
 (define chan (gochan 0))
 (define to (gochan-tick 0))
 
-(go (let loop () (print (memory-statistics)) (thread-sleep! 1) (loop)))
+(go (let loop () (print (memory-statistics) " " chan " " to) (thread-sleep! 1) (loop)))
 
 (let loop ()
   ;; registers a (new?) semaphore per loop. 0 timeout to make it loop
