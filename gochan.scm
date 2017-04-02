@@ -85,7 +85,7 @@
 ;; we want to send, so let's notify any receivers that are ready. if
 ;; this succeeds, we close %sem. otherwise we return #f and we'll need
 ;; to use our semaphore. %sem must already be locked and open!
-(define (gochan-signal-receiver chan %sem msg meta)
+(define (gochan-signal-receiver/subscribe chan %sem msg meta)
   ;; because meta is also used to tell if a semaphore has already been
   ;; signalled (#f) or not (≠ #f).
   (if (eq? #f meta) (error "metadata cannot be #f (in gochan-select* alist)"))
@@ -94,7 +94,13 @@
   (let ((q (gochan-receivers chan)))
     (let loop ()
       (if (queue-empty? q)
-          (void)
+          (begin
+            ;; nobody was aroud to receive our data :( we'll need to
+            ;; enable receivers to notify us when they need data by
+            ;; adding our semaphore to the senders-list:
+            (assert (%gosem-open? %sem))
+            (queue-add! (gochan-senders chan)
+                        (make-send-subscription %sem msg meta)))
           (let ((sub (queue-remove! q)))
             (if (semaphore-signal! (recv-subscription-sem sub) msg
                                    (recv-subscription-meta sub) #t)
@@ -108,14 +114,19 @@
 
 ;; we want to receive stuff, try to signal someone who's ready to
 ;; send. %sem must be locked and open!
-(define (gochan-signal-sender chan %sem meta)
+(define (gochan-signal-sender/subscribe chan %sem meta)
   (if (eq? #f meta) (error "metadata cannot be #f (in gochan-select* alist)"))
   (mutex-lock! (gochan-mutex chan))
   ;; TODO: if closed, signal receiver immediately
   (let ((q (gochan-senders chan)))
     (let loop ()
       (if (queue-empty? q)
-          (void)
+          (begin
+            ;; nobody had data for us :-( awww. but we can add
+            ;; ourselves here so when they do, they can signal us.
+            (assert (%gosem-open? %sem))
+            (queue-add! (gochan-receivers chan)
+                        (make-recv-subscription %sem meta)))
           (let ((sub (queue-remove! q)))
             ;; signalling a sender-semaphore. they don't care about
             ;; data, they just want to be unblocked.
@@ -128,26 +139,6 @@
                 (loop))))))
   (mutex-unlock! (gochan-mutex chan)))
 
-;; we want to send data on chan. add %sem as a new subscription to
-;; chan.
-(define (gochan-subscribe-sender chan %sem msg meta)
-  (info "sender   subscribing on " chan)
-  (when (%gosem-open? %sem)
-    ;; it's a waste to subscribe if we've already got data (nobody
-    ;; would be able to signal us anyway).
-    (mutex-lock! (gochan-mutex chan))
-    (queue-add! (gochan-senders chan) (make-send-subscription %sem msg meta))
-    (mutex-unlock! (gochan-mutex chan))))
-
-;; we want to be notified when data is ready on chan.
-(define (gochan-subscribe-receiver chan %sem meta)
-  (info "receiver subscribing on " chan)
-  (when (%gosem-open? %sem)
-    ;; it's a waste to subscribe if we've already got data (nobody
-    ;; would be able to signal us anyway).
-    (mutex-lock! (gochan-mutex chan))
-    (queue-add! (gochan-receivers chan) (make-recv-subscription %sem meta))
-    (mutex-unlock! (gochan-mutex chan))))
 
 (define (gochan-select* chans)
   (let ((semaphore (make-semaphore)))
@@ -161,12 +152,10 @@
           (let ((chan  (car chans)))
             (match chan
               (((? gochan? chan) meta msg) ;; want to send to chan
-               (gochan-signal-receiver    chan semaphore msg meta)
-               (gochan-subscribe-sender   chan semaphore msg meta))
+               (gochan-signal-receiver/subscribe    chan semaphore msg meta))
               ;; TODO: add support for gotimers here!
               (((? gochan? chan) meta) ;; want to recv on chan
-               (gochan-signal-sender      chan semaphore meta)
-               (gochan-subscribe-receiver chan semaphore meta)))
+               (gochan-signal-sender/subscribe      chan semaphore meta)))
             (loop (cdr chans)))
           (begin
             (if (%gosem-open? semaphore)
