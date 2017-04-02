@@ -14,7 +14,7 @@
 ;; - buffers
 
 (define (info . args) (void))
-(define (info . args) (apply print (cons (current-thread) (cons " " args))))
+;;(define (info . args) (apply print (cons (current-thread) (cons " " args))))
 
 ;; multiple receives
 ;; multiple sends
