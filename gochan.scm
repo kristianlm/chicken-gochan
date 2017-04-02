@@ -229,24 +229,27 @@
   (mutex-lock! (gotimer-mutex timer))
   (info "signalling timer " timer)
   (if (gotimer-when timer)
-      (let ((q (gotimer-receivers timer)))
-        (let loop ()
-          (if (queue-empty? q)
-              (void)
-              (let ((sub (queue-remove! q)))
-                (if (semaphore-signal! (recv-subscription-sem sub)
-                                       (gotimer-data timer)
-                                       (recv-subscription-meta sub)
-                                       (gotimer-ok timer))
-                    ;; receiver was signalled
-                    ;; ok, tick timer.
-                    (gotimer-tick! timer)
-                    ;; semaphore was
-                    ;; already signalled,
-                    ;; can't deliver
-                    ;; value. try next
-                    ;; subscriber!
-                    (loop))))))
+      (if (<= (gotimer-when timer) (current-milliseconds))
+          (let ((q (gotimer-receivers timer)))
+            (let loop ()
+              (if (queue-empty? q)
+                  (void)
+                  (let ((sub (queue-remove! q)))
+                    (info "trying to signal " sub)
+                    (if (semaphore-signal! (recv-subscription-sem sub)
+                                           (gotimer-data timer)
+                                           (recv-subscription-meta sub)
+                                           (gotimer-ok timer))
+                        ;; receiver was signalled
+                        ;; ok, tick timer.
+                        (gotimer-tick! timer)
+                        ;; semaphore was
+                        ;; already signalled,
+                        ;; can't deliver
+                        ;; value. try next
+                        ;; subscriber!
+                        (loop))))))
+          (info timer " was postponed"))
       ;; somebody else grabbed our timer
       ;; trigger from us.
       (info timer " is no longer with us"))
