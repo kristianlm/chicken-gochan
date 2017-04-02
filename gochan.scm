@@ -25,7 +25,12 @@
 ;; for me, it helps to think about semaphore as return-values that can
 ;; block. each gochan-select will create a semaphore and wait for
 ;; somebody to signal it (sometimes immediately (without waiting),
-;; sometimes externally (having to wait)).
+;; sometimes externally (having to wait)). it's important to
+;; understand that it's ok for a semaphore to be registered in a
+;; channel (as sender/receiver) even though it's already been
+;; signalled. this is ok because already-signalled subscribers just be
+;; skipped (you cannot re-deliver data to a (not %gosem-open?)
+;; semaphore).
 (define-record-type gosem
   (make-gosem mutex cv data meta ok)
   gosem?
@@ -47,7 +52,7 @@
 ;; returns #t on successful signal, #f if semaphore was already
 ;; signalled.
 (define (semaphore-signal! sem data meta ok)
-  (info "signalling " sem " from " meta " with data " data (if ok "" " (closed)"))
+  (info "signalling " sem " meta: " meta " data: " data " ok: " ok)
   (mutex-lock! (gosem-mutex sem))
   (cond ((%gosem-open? sem) ;; available!
          (gosem-data-set! sem data)
@@ -127,6 +132,8 @@
 ;; we want to send, so let's notify any receivers that are ready. if
 ;; this succeeds, we close %sem. otherwise we return #f and we'll need
 ;; to use our semaphore. %sem must already be locked and open!
+;;
+;; returns #t if registered as subscriber, #f otherwise.
 (define (gochan-signal-receiver/subscribe chan %sem msg meta)
   ;; because meta is also used to tell if a semaphore has already been
   ;; signalled (#f) or not (≠ #f).
@@ -158,6 +165,8 @@
 
 ;; we want to receive stuff, try to signal someone who's ready to
 ;; send. %sem must be locked and open!
+;;
+;; returns #t if semaphore was registered on channel.
 (define (gochan-signal-sender/subscribe chan %sem meta)
   (if (eq? #f meta) (error "metadata cannot be #f (in gochan-select* alist)"))
   (mutex-lock! (gochan-mutex chan))
