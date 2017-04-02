@@ -441,3 +441,18 @@
          (gochan-select* (gochan-select-alist form ...))
        (meta msg ok)))))
 
+(define-record-printer gochan
+  (lambda (x p)
+    (display "#<gochan " p)
+    (display (- (queue-length (gochan-senders x))
+                (queue-length (gochan-receivers x)))  p)
+    (display ">" p)))
+
+(define-record-printer gotimer
+  (lambda (x p)
+    (display "#<gochan ⌛ " p)
+    (display (- (gotimer-when x) (current-milliseconds)) p)
+    (display "(" p)
+    (display (queue-length (gotimer-receivers x)) p)
+    (display ")" p)
+    (display ">" p)))
