@@ -5,12 +5,10 @@
 ;; License: BSD
 (use srfi-18
      (only matchable match)
+     (only extras random)
      (only data-structures list->queue queue->list sort
            queue-add! queue-empty? queue-remove! queue-first queue-length))
 
-;; todo:
-;;
-;; - randomize channel order in gochan-select*
 
 (define (info . args) (void))
 ;;(define (info . args) (apply print (cons (current-thread) (cons " " args))))
@@ -124,7 +122,7 @@
                (list->queue '()) ;; buffer
                (list->queue '()) ;; senders
                (list->queue '()) ;; receivers
-               #f)) ;; not closed
+               #f))              ;; not closed
 
 (define (make-send-subscription sem data meta) (cons sem (cons data meta)))
 (define send-subscription-sem  car)
@@ -159,7 +157,7 @@
       ;; unblock and receive a zero-value with `ok` set to #f.
       (begin
         (gosem-meta-set! %sem meta) ;; closes semaphore
-        (gosem-ok-set!   %sem #f)   ;; sending to closed channel is not ok!
+        (gosem-ok-set!   %sem #f) ;; sending to closed channel is not ok!
         (mutex-unlock! (gochan-mutex chan))
         #f)
       (let ((q (gochan-receivers chan)))
@@ -179,9 +177,9 @@
                     ;; future receiver to notify us when they need
                     ;; data :(
                     (begin (assert (%gosem-open? %sem))
-                (queue-add! (gochan-senders chan)
-                            (make-send-subscription %sem msg meta))
-                (mutex-unlock! (gochan-mutex chan))
+                           (queue-add! (gochan-senders chan)
+                                       (make-send-subscription %sem msg meta))
+                           (mutex-unlock! (gochan-mutex chan))
                            #t)))
               (let ((sub (queue-remove! q)))
                 (if (semaphore-signal! (recv-subscription-sem sub) msg
@@ -230,36 +228,36 @@
                          ;; sender was already signalled externally, try next
                          (%loop))))))
              (mutex-unlock! (gochan-mutex chan)))
-  (if (gochan-closed chan)
-      ;; oh no! trying to receive from a closed channel. you know the
-      ;; drill.
-      (begin (gosem-meta-set! %sem meta)
-             (gosem-ok-set!   %sem #f) ;; not ok this time around!
-             (mutex-unlock! (gochan-mutex chan))
-             #f)
-      (let ((q (gochan-senders chan)))
-        (let %loop ()
-          (if (queue-empty? q)
-              (begin
-                ;; nobody had data for us :-( awww. but we can add
-                ;; ourselves here so when they do, they can signal us.
-                (assert (%gosem-open? %sem))
-                (queue-add! (gochan-receivers chan)
-                            (make-recv-subscription %sem meta))
-                (mutex-unlock! (gochan-mutex chan))
-                #t)
-              (let ((sub (queue-remove! q)))
-                ;; signalling a sender-semaphore. they don't care about
-                ;; data, they just want to be unblocked.
-                (if (semaphore-signal! (send-subscription-sem sub) #f (send-subscription-meta sub) #t)
-                    ;; receiver was signalled, fill in our semaphore
-                    ;; (which can return immediately)
-                    (begin (gosem-meta-set! %sem meta) ;; close
-                           (gosem-data-set! %sem (send-subscription-data sub))
-                           (gosem-ok-set!   %sem #t)
-                           (mutex-unlock! (gochan-mutex chan))
-                           #f)
-                    ;; sender was already signalled externally, try next
+      (if (gochan-closed chan)
+          ;; oh no! trying to receive from a closed channel. you know the
+          ;; drill.
+          (begin (gosem-meta-set! %sem meta)
+                 (gosem-ok-set!   %sem #f) ;; not ok this time around!
+                 (mutex-unlock! (gochan-mutex chan))
+                 #f)
+          (let ((q (gochan-senders chan)))
+            (let %loop ()
+              (if (queue-empty? q)
+                  (begin
+                    ;; nobody had data for us :-( awww. but we can add
+                    ;; ourselves here so when they do, they can signal us.
+                    (assert (%gosem-open? %sem))
+                    (queue-add! (gochan-receivers chan)
+                                (make-recv-subscription %sem meta))
+                    (mutex-unlock! (gochan-mutex chan))
+                    #t)
+                  (let ((sub (queue-remove! q)))
+                    ;; signalling a sender-semaphore. they don't care about
+                    ;; data, they just want to be unblocked.
+                    (if (semaphore-signal! (send-subscription-sem sub) #f (send-subscription-meta sub) #t)
+                        ;; receiver was signalled, fill in our semaphore
+                        ;; (which can return immediately)
+                        (begin (gosem-meta-set! %sem meta) ;; close
+                               (gosem-data-set! %sem (send-subscription-data sub))
+                               (gosem-ok-set!   %sem #t)
+                               (mutex-unlock! (gochan-mutex chan))
+                               #f)
+                        ;; sender was already signalled externally, try next
                         (%loop)))))))))
 
 ;; we want to add a timeout to our semaphore. if the chan (aka gotimer)
@@ -368,7 +366,15 @@
 ;; came from (ie if you supply meta data that's is the channel itself)
 ;;
 (define (gochan-select* chans)
-  (let ((semaphore (make-semaphore)))
+  (let ((semaphore (make-semaphore))
+        ;; sorting trick! this lets us load-balance in case there are
+        ;; multiple channels with data always available. there's
+        ;; probably much faster ways to do this, though...
+        (chans (map cdr
+                    (sort (map (lambda (spec)
+                                 (cons (/ (random 256) 256.0) spec))
+                               chans)
+                          (lambda (a b) (< (car a) (car b)))))))
     ;; keep our semaphore locked while we check channels for data
     ;; ready, so that we can't get signalled externally while we do
     ;; this.
@@ -426,8 +432,8 @@
                                           (lambda (a b) ;; sort #f's last
                                             (let ((a (car a))
                                                   (b (car b)))
-                                                 (if a
-                                                     (if b (< a b) #t)
+                                              (if a
+                                                  (if b (< a b) #t)
                                                   #f)))))
                            (timer (cdr (car timers*)))
                            (timeout (max 0 (/ (- (car (car timers*))

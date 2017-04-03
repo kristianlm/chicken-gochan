@@ -1,4 +1,5 @@
-(use gochan test)
+(use gochan test
+     (only srfi-1 list-tabulate))
 ;;(define-syntax test (syntax-rules () ((_ body ...) (begin body ...))))
 
 ;; todo:
@@ -145,5 +146,29 @@
  (test "buffered leftovers from chan 2" 2 (gochan-recv chan))
  (test "buffered leftovers from chan 3" 3 (gochan-recv chan))
  (test "chan closed"     #f (gochan-recv chan)))
+
+(test-group
+ "load-balancer"
+
+ ;; create some chans with lots of data immediately available
+ (define chan1 (gochan 100))
+ (define chan2 (gochan 100))
+ (list-tabulate 100 (lambda (x) (gochan-send chan1 x)))
+ (list-tabulate 100 (lambda (x) (gochan-send chan2 x)))
+
+ ;; receive from either
+ (define origin
+   (list-tabulate
+    20 (lambda (x)
+         (gochan-select
+          ((chan1 -> msg ok) 1)
+          ((chan2 -> msg ok) 2)))))
+
+ ;; check that we got data from both contestants
+ (define num-chan1 (count (lambda (x) (eq? x 1)) origin))
+ (define num-chan2 (count (lambda (x) (eq? x 2)) origin))
+ (print "message origins: " origin)
+ (test "not just results from chan1" #t (< num-chan1 19))
+ (test "not just results from chan2" #t (< num-chan2 19)))
 
 (test-exit)
