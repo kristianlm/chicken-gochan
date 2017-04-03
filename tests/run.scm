@@ -86,4 +86,31 @@
  (define duration (- (current-milliseconds) start))
  (test "200ms to timeout took <220ms " #t (begin (print* "(" duration ")")(< duration 220))))
 
+(test-group
+ "closing channels"
+ (define chan (gochan 0))
+ (gochan-close chan)
+ (test "receiving from closed channel sync"
+       '(#f #f)
+       (gochan-select ((chan -> msg ok) (list msg ok))))
+ (test "sending to closed channel sync"
+       '#f
+       (gochan-select ((chan <- 123 ok) ok)))
+
+ (define chan (gochan 0))
+ (define go1 (go (receive (gochan-recv chan))))
+ (define go2 (go (receive (gochan-recv chan))))
+ (define go3 (go (receive (gochan-recv chan))))
+ (thread-yield!);; ensure goroutines are blocking on chan
+
+ (test "thread waiting 1" 'sleeping (thread-state go1))
+ (test "thread waiting 2" 'sleeping (thread-state go2))
+ (test "thread waiting 3" 'sleeping (thread-state go3))
+
+ (gochan-close chan)
+ ;;                                   data ok  meta
+ (test "thread awakened by close 1" '(#f   #f  #t) (thread-join! go1))
+ (test "thread awakened by close 2" '(#f   #f  #t) (thread-join! go2))
+ (test "thread awakened by close 3" '(#f   #f  #t) (thread-join! go3)))
+
 (test-exit)
