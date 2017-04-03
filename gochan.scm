@@ -411,14 +411,26 @@
                 ;; channels, so we need to wait for somebody else to
                 ;; signal us.
                 (if (pair? timesub)
-                    (let* ((timer (car (sort timesub
-                                             (lambda (a b) ;; sort #f last
-                                               (let ((a (gotimer-when a))
-                                                     (b (gotimer-when b)))
+                    ;; we need to resort timesub here in case the
+                    ;; previous timeout caused gotimer-when
+                    ;; modifications. obs: cheeky gotimer-when peek
+                    ;; without mutex! since we're mutex-free, timers
+                    ;; may trigger at any time in here. but as long as
+                    ;; we sort *after* we pick out gotimer-when, we're
+                    ;; sure to not all of a sudden have our timeout
+                    ;; become #f and that's the only really critical
+                    ;; thing.
+                    (let* ((timers* (sort (map (lambda (timer)
+                                                 (cons (gotimer-when timer) timer))
+                                               timesub)
+                                          (lambda (a b) ;; sort #f's last
+                                            (let ((a (car a))
+                                                  (b (car b)))
                                                  (if a
                                                      (if b (< a b) #t)
-                                                     #f))))))
-                           (timeout (max 0 (/ (- (gotimer-when timer)
+                                                  #f)))))
+                           (timer (cdr (car timers*)))
+                           (timeout (max 0 (/ (- (car (car timers*))
                                                  (current-milliseconds))
                                               1000))))
                       (info "wait for data with timer " timer " and timeout " timeout)
