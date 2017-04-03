@@ -415,10 +415,6 @@
 ;; turn gochan-select form into `((,chan1 . ,proc1) (,chan2 . ,proc2) ...)
 (define-syntax gochan-select-alist
   (syntax-rules (-> <-)
-    ;; without any variables
-    ((_ ((channel) body ...) rest ...)
-     `((,channel ,(lambda (_ _) (begin body ...)))
-       ,@(gochan-select-alist rest ...)))
     ;; without optional status variable
     ((_ ((channel -> varname) body ...) rest ...)
      `((,channel ,(lambda (varname _) (begin body ...)))
