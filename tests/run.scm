@@ -121,4 +121,29 @@
  (test "thread awakened by close 2" '(#f   #f  #t) (thread-join! go2))
  (test "thread awakened by close 3" '(#f   #f  #t) (thread-join! go3)))
 
+(test-group
+ "buffered channels"
+
+ (define chan (gochan 2))
+ (define done #f)
+
+ (define go1
+   (go (gochan-send chan 1) (set! done 1)
+       (gochan-send chan 2) (set! done 2)
+       (gochan-send chan 3) (set! done 3)
+       (gochan-close chan)
+       'exited))
+
+ (thread-yield!)
+ (test "thread blocked" 'sleeping (thread-state go1))
+ (test "thread filled buffer of two items" 2 done)
+ (print "gochan is now " chan)
+ (test "buffered data from chan item 1" 1 (gochan-recv chan))
+ (test "thread awakened by previous receive (buffer available)"
+       'exited (thread-join! go1))
+ (test "thread " 3 done)
+ (test "buffered leftovers from chan 2" 2 (gochan-recv chan))
+ (test "buffered leftovers from chan 3" 3 (gochan-recv chan))
+ (test "chan closed"     #f (gochan-recv chan)))
+
 (test-exit)

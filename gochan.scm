@@ -11,7 +11,6 @@
 ;; todo:
 ;;
 ;; - randomize channel order in gochan-select*
-;; - buffers
 
 (define (info . args) (void))
 ;;(define (info . args) (apply print (cons (current-thread) (cons " " args))))
@@ -109,17 +108,22 @@
                (values when when #t)))))
 
 (define-record-type gochan
-  (make-gochan mutex receivers senders closed)
+  (make-gochan mutex cap buffer receivers senders closed)
   gochan?
   (mutex     gochan-mutex)
+  (cap       gochan-cap)
+  (buffer    gochan-buffer)
   (receivers gochan-receivers)
   (senders   gochan-senders)
   (closed    gochan-closed gochan-closed-set!))
 
 (define (gochan cap)
+  (assert (fixnum? cap))
   (make-gochan (make-mutex)
-               (list->queue '())
-               (list->queue '())
+               cap               ;; capacity (max buffer size)
+               (list->queue '()) ;; buffer
+               (list->queue '()) ;; senders
+               (list->queue '()) ;; receivers
                #f)) ;; not closed
 
 (define (make-send-subscription sem data meta) (cons sem (cons data meta)))
@@ -130,6 +134,10 @@
 (define (make-recv-subscription sem meta) (cons sem meta))
 (define recv-subscription-sem  car)
 (define recv-subscription-meta cdr)
+
+(define (%gochan-free-capacity? chan)
+  (< (queue-length (gochan-buffer chan))
+     (gochan-cap chan)))
 
 ;; we want to send, so let's notify any receivers that are ready. if
 ;; this succeeds, we close %sem. otherwise we return #f and we'll need
@@ -158,14 +166,23 @@
         (let %loop ()
           (if (queue-empty? q)
               (begin
-                ;; nobody was aroud to receive our data :( we'll need to
-                ;; enable receivers to notify us when they need data by
-                ;; adding our semaphore to the senders-list:
-                (assert (%gosem-open? %sem))
+                ;; no semaphores left, nobody is around to receive our
+                ;; data :( try to fill the buffer then
+                (if (%gochan-free-capacity? chan)
+                    (begin (queue-add! (gochan-buffer chan) msg)
+                           (gosem-meta-set! %sem meta) ;; closes semaphore
+                           (gosem-ok-set!   %sem #t)
+                           (mutex-unlock! (gochan-mutex chan))
+                           #f)
+                    ;; buffer didn't help us either! we are running
+                    ;; out of options now. we'll need to allow some
+                    ;; future receiver to notify us when they need
+                    ;; data :(
+                    (begin (assert (%gosem-open? %sem))
                 (queue-add! (gochan-senders chan)
                             (make-send-subscription %sem msg meta))
                 (mutex-unlock! (gochan-mutex chan))
-                #t)
+                           #t)))
               (let ((sub (queue-remove! q)))
                 (if (semaphore-signal! (recv-subscription-sem sub) msg
                                        (recv-subscription-meta sub) #t)
@@ -185,6 +202,34 @@
   (if (eq? #f meta) (error "metadata cannot be #f (in gochan-select* alist)"))
   (mutex-lock! (gochan-mutex chan))
   ;; TODO: if closed, signal receiver immediately
+
+  (if (> (queue-length (gochan-buffer chan)) 0)
+      ;; data already in buffer! pop buffer and put data in our
+      ;; semaphore for ourselves (then signal any blocked senders).
+      (begin (gosem-meta-set! %sem meta) ;; close
+             (gosem-data-set! %sem (queue-remove! (gochan-buffer chan)))
+             (gosem-ok-set!   %sem #t)
+             ;; here's a trick! since we just freed 1 buffer item, so
+             ;; we might have need to unblocking a sender who's
+             ;; waiting for buffer capacity. we can do it all in one
+             ;; go here on the sender's behalf, since we've got the
+             ;; channel mutex already: signal a sender and put its
+             ;; data in the buffer.
+             (let ((q (gochan-senders chan)))
+               (let %loop ()
+                 (unless (queue-empty? q) ;; nobody to signal? no problem
+                   (let ((sub (queue-remove! q)))
+                     (if (semaphore-signal! (send-subscription-sem sub) #f
+                                            (send-subscription-meta sub) #t)
+                         ;; sender was signalled/unblocked! add its
+                         ;; data to the buffer
+                         (begin (queue-add! (gochan-buffer chan)
+                                            (send-subscription-data sub))
+                                (mutex-unlock! (gochan-mutex chan))
+                                #f)
+                         ;; sender was already signalled externally, try next
+                         (%loop))))))
+             (mutex-unlock! (gochan-mutex chan)))
   (if (gochan-closed chan)
       ;; oh no! trying to receive from a closed channel. you know the
       ;; drill.
@@ -215,7 +260,7 @@
                            (mutex-unlock! (gochan-mutex chan))
                            #f)
                     ;; sender was already signalled externally, try next
-                    (%loop))))))))
+                        (%loop)))))))))
 
 ;; we want to add a timeout to our semaphore. if the chan (aka gotimer)
 ;; has already timed out, we immediately alert %sem and tick the
@@ -498,7 +543,11 @@
     (display "#<gochan " p)
     (display (- (queue-length (gochan-senders x))
                 (queue-length (gochan-receivers x)))  p)
-    (display ">" p)))
+    (display " (" p)
+    (display (queue-length (gochan-buffer x)) p)
+    (display "/" p)
+    (display (gochan-cap x) p)
+    (display ")>" p)))
 
 (define-record-printer gotimer
   (lambda (x p)
