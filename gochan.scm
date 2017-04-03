@@ -564,8 +564,10 @@
 (define-record-printer gotimer
   (lambda (x p)
     (display "#<gochan ⌛ " p)
-    (display (- (gotimer-when x) (current-milliseconds)) p)
-    (display "(" p)
+    (display (if (gotimer-when x)
+                 (- (gotimer-when x) (current-milliseconds))
+                 "∞") p)
+    (display "ms (" p)
     (display (queue-length (gotimer-receivers x)) p)
     (display ")" p)
     (display ">" p)))
