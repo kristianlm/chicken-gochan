@@ -417,19 +417,19 @@
   (syntax-rules (-> <-)
     ;; without any variables
     ((_ ((channel) body ...) rest ...)
-     `((,channel ,(lambda (_ _) body ...))
+     `((,channel ,(lambda (_ _) (begin body ...)))
        ,@(gochan-select-alist rest ...)))
     ;; without optional status variable
     ((_ ((channel -> varname) body ...) rest ...)
-     `((,channel ,(lambda (varname _) body ...))
+     `((,channel ,(lambda (varname _) (begin body ...)))
        ,@(gochan-select-alist rest ...)))
     ;; with optional status variable
     ((_ ((channel -> varname ok) body ...) rest ...)
-     `((,channel ,(lambda (varname ok) body ...))
+     `((,channel ,(lambda (varname ok) (begin body ...)))
        ,@(gochan-select-alist rest ...)))
 
     ((_ ((channel <- msg) body ...) rest ...)
-     `((,channel ,(lambda () body ...) ,msg)
+     `((,channel ,(lambda (_ _) (begin body ...)) ,msg)
        ,@(gochan-select-alist rest ...)))
 
     ((_) '())))
