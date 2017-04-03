@@ -206,7 +206,7 @@
               (let ((sub (queue-remove! q)))
                 ;; signalling a sender-semaphore. they don't care about
                 ;; data, they just want to be unblocked.
-                (if (semaphore-signal! (send-subscription-sem sub) #f (send-subscription-meta sub) #f)
+                (if (semaphore-signal! (send-subscription-sem sub) #f (send-subscription-meta sub) #t)
                     ;; receiver was signalled, fill in our semaphore
                     ;; (which can return immediately)
                     (begin (gosem-meta-set! %sem meta) ;; close

@@ -89,6 +89,14 @@
 (test-group
  "closing channels"
  (define chan (gochan 0))
+
+ (go (gochan-recv chan)
+     (gochan-recv chan))
+ (thread-yield!)
+ (test "sender `ok` flag success 1" #t (gochan-select ((chan <- 'hello ok) ok)))
+ (test "sender `ok` flag success 2" #t (gochan-select ((chan <- 'hi    ok) ok)))
+
+
  (gochan-close chan)
  (test "receiving from closed channel sync"
        '(#f #f)
