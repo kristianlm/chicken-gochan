@@ -10,6 +10,7 @@
 
 ;; todo:
 ;;
+;; - randomize channel order in gochan-select*
 ;; - closing a channel
 ;; - buffers
 
