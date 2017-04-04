@@ -4,9 +4,8 @@
  [Go]: http://golang.org/
 
 [Go]-inspired channels for [Chicken Scheme]. Essentially thread-safe
-fifo queues that are useful in concurrency and for thread
-synchronization. This implementation has largely been inspired by
-[this Go channel tutorial](https://gobyexample.com/channels).
+fifo queues that are useful for thread communication and
+synchronization.
 
 chicken-gochan has no egg dependencies.
 
@@ -14,83 +13,95 @@ chicken-gochan has no egg dependencies.
 
 Currently supported:
 
-- closable channels (they can have limited length)
-- receive from multiple channels `(gochan-receive (list channel1 channel2))`
-- receive timeouts
-- `gochan-select` syntax
+- receive and send switch (`gochan-select`)
+- timeouts as ordinary receive on a channel
+- closable channels
+- load-balancing when multiple channels have data ready
 
 ## Comparison to real Go Channels
 
-- all channels have an unlimited buffer
-- types are dynamic
+The API and behaviour largely follows [Go]'s channel API, with some
+exceptions:
+
+- channels don't have any type information
+- sending to a channel that gets closed does not panic, it returns
+  (all sender) immediately with the `ok` flag set to `#f`.
+- closing an already closed channel has no effect, and is not an error
+  (`gochan-close` is idempotent).
 
 ## API
 
-    [procedure] (gochan [item1] [item2] ...)
+    [procedure] (gochan capacity)
 
-Construct a `gochan` channel initialized with optional items. Each
-gochan holds a buffer whose length is limited by memory only.
+Construct a channel with a maximum buffer-size of `capacity`. If
+`capacity` is `0`, the channel is unbuffered and all its operations
+will block until a remote end sends/receives.
 
-    [procedure] (gochan-send chan msg)
+    [procedure] (gochan-select ((chan <-|-> msg [ ok ]) body ...) ...)
 
-Add msg to chan's message buffer. This will "awaken" a single thread,
-if any, waiting for messages on chan. It is an error to send to a
-closed channel.
+This is a channel switch where you can receive or send to one or more
+channels, or block until a channel becomes ready. Multiple send and
+receive operations can be specified. The `body` of the first channel
+to be ready will be executed.
 
-    [procedure] (gochan-receive chans [timeout/seconds])
+Receive clauses, `((chan <- msg [ok]) body ...)`, execute `body` with
+`msg` bound to the message object, and optionally `ok` bound to a flag
+indicating success (`#t`) or not (`#f` if channel was closed).
 
-`chans` is a single gochan or a list of gochans. Pops next msg from
-any of chans' buffers in a thread-safe manner, if possible. Otherwise,
-if channel is empty, wait for a `gochan-send` from another thread. If
-timeout is supplied and is reached, or all channels are empty and
-closed, an error is thrown.
+Send clauses, `((chan -> msg [ok]) body ...)`, execute `body` after
+`msg` has been sent to a receiver, successfully buffered onto the
+channel, or if channel was closed. Again, the optional variable name
+`ok`, flags whether this was successful.
 
-If multiple channels in chans have messages available, the message
-from the first channel is popped first.
+Only one clause `body` will get executed. `gochan-select` will block
+until a clause is ready. A send/recv on a closed channel yields the
+`#f` message and a `#f` `ok` immediately (this never blocks).
 
-If you have multiple threads waiting messages from the same gochan,
-the order in which threads receive messages is unspecified (but each
-message is received only once).
-
-    [procedure] (gochan-receive* chans timeout/seconds)
-
-Like `gochan-receive`, but doesn't error out. Instead, it returns:
-`#f` for all channels closed, `#t` for timeout and `(list <msg>)` on
-success (distinguishable from a `#f` or `#t` message).
-
-    [procedure] (gochan-close chan)
-
-Close channel. It is an error to send to a closed channel. It is an
-error to receive from an empty and closed channel.
-
-    [procedure] (gochan-closed? chan)
-
-Closed predicate.
-
-    [procedure] (gochan-for-each chans proc)
-
-Call `(proc <msg>)` for each msg in chan (`proc` must unfortunately
-have side-effects). Returns `(void)` when all `chans` is closed.
-
-    [procedure] (gochan-fold chans proc)
-
-Like a normal fold, but fold over chans's messages. Returns when all
-`chans` are closed.
-
-    [syntax] (gochan-select (<chan> <var> body ...) ... (<timeout/seconds> body ...))
-
-Convenience syntax for handling incoming messages from different
-gochans differently. Used as in [Go], typically:
+Here's an example:
 
 ```scheme
 (gochan-select
- (chan1 msg (error "from c1" msg))
- (chan2 obj (list  "from c2" obj))
- (1 (error "waited one second, but got nothing!")))
+ ((chan1 -> msg ok) (if ok
+                        (print "chan3 says " msg)
+                        (print "chan3 was closed!")))
+ ((chan2 <- 123) (print "somebody will get/has gotten 123 on chan2") ))
 ```
 
-It is an error to specify multiple timeouts. `gochan-select` returns
-the associated channel's body return-value.
+`gochan-select` returns the return-value of the executed clause's
+body.
+
+    [procedure] (gochan-send chan msg)
+
+This is short for `(gochan-select ((chan <- msg)))`.
+
+    [procedure] (gochan-recv chan)
+
+This is short for `(gochan-select ((chan -> msg)))`.
+
+    [procedure] (gochan-close chan)
+
+Close the channel. Sending to or receiving from a closed channel will
+immediately return a `#f` message with the `ok` flag set to `#f`. Note
+that this will unblock _all_ receivers and senders waiting for an
+operation on `chan`.
+
+    [procedure] (gochan-after duration/ms)
+
+Return a `gochan` that will "send" a single message after
+`duration/ms` milliseconds of its creation. The message is the
+`(current-milliseconds)` value at the time of the timeout (not when
+the message was received).
+
+    [procedure] (gochan-tick duration/ms)
+
+Return a `gochan` that will "send" a message every `duration/ms`
+milliseconds. The message is the `(current-milliseconds)`
+value at the time of the tick (not when it was received).
+
+    [procedure] (go body ...)
+
+Starts and returns a new srfi-18 thread. Short for `(thread-start!
+(lambda () body ...))`.
 
 ## Samples
 
