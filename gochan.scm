@@ -436,9 +436,10 @@
                                                   (if b (< a b) #t)
                                                   #f)))))
                            (timer (cdr (car timers*)))
-                           (timeout (max 0 (/ (- (car (car timers*))
-                                                 (current-milliseconds))
-                                              1000))))
+                           (timeout (let ((when (car (car timers*))))
+                                      (and when (max 0 (/ (- when
+                                                             (current-milliseconds))
+                                                          1000))))))
                       (info "wait for data with timer " timer " and timeout " timeout)
                       (if (mutex-unlock! (gosem-mutex semaphore)
                                          (gosem-cv semaphore)
