@@ -486,7 +486,8 @@
   (gochan-select* `((,chan #t ,msg))))
 
 (define (gochan-recv chan)
-  (assert (gochan? chan))
+  (assert (or (gochan? chan)
+              (gotimer? chan)))
   (gochan-select* `((,chan #t))))
 
 ;; close channel. unlike in go, this operation is idempotent (and
