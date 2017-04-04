@@ -1,165 +1,174 @@
-(use gochan test srfi-1 srfi-13)
+(use gochan test
+     (only srfi-1 list-tabulate))
+;;(define-syntax test (syntax-rules () ((_ body ...) (begin body ...))))
+
+;; todo:
+;; - unbuffered synchronous
+;; - unbuffered multiple receivers
+;; - unbuffered multiple senders
+;; - unbuffered send&recv on channel
 
 (test-group
- "simple gochan"
- (define c (gochan))
- (gochan-send c 'one)
- (test "synchronous recv" 'one (gochan-receive c))
- (gochan-send c 'two)
- (gochan-send c 'three)
- (gochan-close c)
- (test "closed?" #t (gochan-closed? c))
- (test-error "send to closed gochan fails" (gochan-send c 'three))
-
- (test "closed channel keeps buffer" 'two        (gochan-receive c))
- (test "gochan-receive*"             'three (car (gochan-receive* c #f)))
-
- (test-error "errors on recving from closed and empty gochan" (gochan-receive c) )
-
- (test "gochan-receive* #f when closed" #f (gochan-receive* c #f))
- (test "on-closed unlocks mutex"        #f (gochan-receive* c #f))
-
- )
+ "unbuffered 1 channel gochan-select* meta"
+ (define chan (gochan 0))
+ (go (gochan-send chan 'hello))
+ ;;      msg   ok meta
+ (test '(hello #t meta!) (receive (gochan-select* `((,chan meta!))))))
 
 (test-group
- "multiple receivers - no blocking"
+ "unbuffered 2 channels, 1 channel ready"
+ (define chan1 (gochan 0))
+ (define chan2 (gochan 0))
+ (go (gochan-send chan1 'one)
+     (gochan-send chan1 'two))
 
- (define channel (gochan))
- (define result (gochan))
- (define (process) (gochan-send result (gochan-receive channel)))
- (define t1 (thread-start! (make-thread process "tst1")))
- (define t2 (thread-start! (make-thread process "tst2")))
-
- (thread-yield!) ;; make both t1 and t2 wait on condvar
-
- (begin
-   (gochan-send channel "1")
-   (gochan-send channel "2"))
-
- (test "1" (gochan-receive result))
- (test "2" (gochan-receive result)))
-
+ (test "pick from data-ready in order data first"
+       'one
+       (gochan-select ((chan1 -> msg) msg)
+                      ((chan2 -> msg) 'wrong!)))
+ (test "pick from data-ready in order data last"
+       'two
+       (gochan-select ((chan2 -> msg) 'wrong!)
+                      ((chan1 -> msg) msg))))
 
 (test-group
- "multiple channels"
+ "unbuffered 2 channels, 2 channels ready"
+ (define chan1 (gochan 0))
+ (define chan2 (gochan 0))
+ (go (gochan-send chan1 1)
+     (gochan-send chan1 2))
+ (go (gochan-send chan2 3)
+     (gochan-send chan2 4))
 
- (define c1 (gochan))
- (define c2 (gochan))
- (gochan-send c1 'c1)
- (gochan-send c2 'c2)
-
- (test "nonempty first"  'c1 (gochan-receive (list c1 c2)))
- (test "nonempty second" 'c2 (gochan-receive (list c1 c2)))
-
- (gochan-send c2 'c2-again)
- (gochan-close c1)
- (gochan-close c2)
-
- (test "close first" 'c2-again (gochan-receive (list c1 c2)))
- (test "both closed" #f (gochan-receive* (list c1 c2) #f))
- )
+ (test "all messages received exactly once (order unknown by design)"
+       '(1 2 3 4)
+       (sort
+        (list (gochan-select ((chan1 -> msg) msg)
+                             ((chan2 -> msg) msg))
+              (gochan-select ((chan1 -> msg) msg)
+                             ((chan2 -> msg) msg))
+              (gochan-select ((chan2 -> msg) msg)
+                             ((chan1 -> msg) msg))
+              (gochan-select ((chan2 -> msg) msg)
+                             ((chan1 -> msg) msg)))
+        <)))
 
 (test-group
- "empty multiple channels"
- (define c1 (gochan))
- (define c2 (gochan))
- (define (process) (gochan-fold (list c1 c2) (lambda (x s) (thread-yield!) (+ x s)) 0))
- (define workers (map thread-start! (make-list 4 process)))
+ "unbuffered 1 channel fifo, primordial first"
 
- ;; a couple of challenges
- (thread-yield!) (for-each (cut gochan-send c1 <>) (iota 10 1000))
- (thread-yield!) (for-each (cut gochan-send c2 <>) (iota 10 100))
+ (define chan (gochan 0))
+ (go (thread-yield!)
+     (gochan-send chan 1)
+     (gochan-send chan 2))
+ (test "1 channel fifo priomaridal first" 1 (gochan-recv chan))
+ (test "1 channel fifo priomaridal first" 2 (gochan-recv chan))
+
+ (define chan (gochan 0))
+ (go (gochan-send chan 1)
+     (gochan-send chan 2))
  (thread-yield!)
-
- (gochan-close c1)
- (gochan-close c2)
-
- (let ((worker-sums (map thread-join! workers)))
-   (test "fair worker distribution" #t (every (cut < 1000 <>) worker-sums))
-   (test "multiple empty channels with multiple workers"
-         (+ 10000 9 8 7 6 5 4 3 2 1
-            1000  9 8 7 6 5 4 3 2 1)
-         (fold + 0 worker-sums)))
- )
+ (test "1 channel fifo goroutine   first" 1 (gochan-recv chan))
+ (test "1 channel fifo goroutine   first" 2 (gochan-recv chan)))
 
 (test-group
- "gochan-for-each"
+ "timers"
+ (define to1 (gochan-after 100))
+ (define to2 (gochan-after 200))
+ (define reply (gochan 0))
 
- (define c (gochan "a" "b" "c"))
- (gochan-close c)
+ (go (gochan-select ((to1 -> x) (gochan-send reply 'to1))
+                    ((to2 -> x) (gochan-send reply 'to2))))
+ (go (gochan-select ((to1 -> x) (gochan-send reply 'to1))
+                    ((to2 -> x) (gochan-send reply 'to2))))
 
- (test "simple for-each"
-       "abc"
-       (with-output-to-string (lambda () (gochan-for-each c display)))))
-
-(test-group
- "gochan-fold"
-  (define c (gochan))
-  (for-each (cut gochan-send c <>) (iota 101))
-  (gochan-close c)
-  (test "gochan-fold sum" 5050 (gochan-fold c (lambda (msg state) (+ msg state)) 0)))
-
-(test-group
- "gochan-select"
- (define c1 (gochan 1 1))
- (define c2 (gochan 2))
- (gochan-close c1)
- (gochan-close c2)
- (define (next)
-   (gochan-select
-    (c1 msg (list "c1" msg))
-    (c2 obj (list "c2" obj))))
-
- (test "gochan-select 1" '("c1" 1) (next))
- (test "gochan-select 2" '("c1" 1) (next))
- (test "gochan-select 3" '("c2" 2) (next))
- )
+ (define start (current-milliseconds))
+ (test "timeout order 1" 'to1 (gochan-recv reply))
+ (test "timeout order 2" 'to2 (gochan-recv reply))
+ (define duration (- (current-milliseconds) start))
+ (test "200ms to timeout took <220ms " #t (begin (print* "(" duration ")")(< duration 220))))
 
 (test-group
- "timeouts"
+ "closing channels"
+ (define chan (gochan 0))
 
- (test "immediate timeout" #t (gochan-receive* (gochan) 0))
- (test-error "timeout error" (gochan-receive (gochan) 0))
-
- (define c (gochan))
- (define workers (map thread-start! (make-list 4 (lambda () (gochan-receive* c 0.1)))))
-
- (test "simultaneous timeouts"
-       '(#t #t #t #t)
-       (map thread-join! workers))
+ (go (gochan-recv chan)
+     (gochan-recv chan))
+ (thread-yield!)
+ (test "sender `ok` flag success 1" #t (gochan-select ((chan <- 'hello ok) ok)))
+ (test "sender `ok` flag success 2" #t (gochan-select ((chan <- 'hi    ok) ok)))
 
 
- (test 'timeout
-       (gochan-select
-        (c msg (error "from c1" msg))
-        (0.1 'timeout)))
+ (gochan-close chan)
+ (test "receiving from closed channel sync"
+       '(#f #f)
+       (gochan-select ((chan -> msg ok) (list msg ok))))
+ (test "sending to closed channel sync"
+       '#f
+       (gochan-select ((chan <- 123 ok) ok)))
 
+ (define chan (gochan 0))
+ (define go1 (go (receive (gochan-recv chan))))
+ (define go2 (go (receive (gochan-recv chan))))
+ (define go3 (go (receive (gochan-recv chan))))
+ (thread-yield!);; ensure goroutines are blocking on chan
 
- (define cclosed (gochan))
- (gochan-close cclosed)
- (test-error
-  "no timeout, closed channel still produces error"
-  (gochan-select
-   (cclosed msg 'msg)
-   (0 'to)))
- )
+ (test "thread waiting 1" 'sleeping (thread-state go1))
+ (test "thread waiting 2" 'sleeping (thread-state go2))
+ (test "thread waiting 3" 'sleeping (thread-state go3))
+
+ (gochan-close chan)
+ ;;                                   data ok  meta
+ (test "thread awakened by close 1" '(#f   #f  #t) (thread-join! go1))
+ (test "thread awakened by close 2" '(#f   #f  #t) (thread-join! go2))
+ (test "thread awakened by close 3" '(#f   #f  #t) (thread-join! go3)))
 
 (test-group
- "closing a channel will trigger all receivers"
- (define result (gochan))
- (define closing (gochan))
- (thread-start! (lambda () (gochan-send result (receive (gochan-receive closing)))))
- (thread-start! (lambda () (gochan-send result (receive (gochan-receive closing)))))
- (thread-start! (lambda () (gochan-send result (receive (gochan-receive closing)))))
+ "buffered channels"
 
- (thread-sleep! 0.1)
- (gochan-close closing)
- (test '(#f #f #f) (list-tabulate 3 (lambda (i) (gochan-receive result)))))
+ (define chan (gochan 2))
+ (define done #f)
 
-(warning "stress-testing, this may take a few seconds ...")
+ (define go1
+   (go (gochan-send chan 1) (set! done 1)
+       (gochan-send chan 2) (set! done 2)
+       (gochan-send chan 3) (set! done 3)
+       (gochan-close chan)
+       'exited))
+
+ (thread-yield!)
+ (test "thread blocked" 'sleeping (thread-state go1))
+ (test "thread filled buffer of two items" 2 done)
+ (print "gochan is now " chan)
+ (test "buffered data from chan item 1" 1 (gochan-recv chan))
+ (test "thread awakened by previous receive (buffer available)"
+       'exited (thread-join! go1))
+ (test "thread " 3 done)
+ (test "buffered leftovers from chan 2" 2 (gochan-recv chan))
+ (test "buffered leftovers from chan 3" 3 (gochan-recv chan))
+ (test "chan closed"     #f (gochan-recv chan)))
+
 (test-group
- "stress test"
- (include "stress.scm")
- (test "no stress.scm assertions" #t #t))
+ "load-balancer"
+
+ ;; create some chans with lots of data immediately available
+ (define chan1 (gochan 100))
+ (define chan2 (gochan 100))
+ (list-tabulate 100 (lambda (x) (gochan-send chan1 x)))
+ (list-tabulate 100 (lambda (x) (gochan-send chan2 x)))
+
+ ;; receive from either
+ (define origin
+   (list-tabulate
+    20 (lambda (x)
+         (gochan-select
+          ((chan1 -> msg ok) 1)
+          ((chan2 -> msg ok) 2)))))
+
+ ;; check that we got data from both contestants
+ (define num-chan1 (count (lambda (x) (eq? x 1)) origin))
+ (define num-chan2 (count (lambda (x) (eq? x 2)) origin))
+ (print "message origins: " origin)
+ (test "not just results from chan1" #t (< num-chan1 19))
+ (test "not just results from chan2" #t (< num-chan2 19)))
 
 (test-exit)

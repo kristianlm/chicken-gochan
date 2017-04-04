@@ -2,7 +2,7 @@
 ;;; messages (consistantly). We need to figure out what's going wrong here!
 (use gochan)
 
-(define chan (gochan))
+(define chan (gochan 1024))
 
 (thread-start!
  (lambda () ;; simple echo
@@ -13,7 +13,7 @@
 
 (let loop ((n 1000000))
   (if (> n 0)
-      (let ((reply (gochan)))
+      (let ((reply (gochan 1024)))
         (gochan-send chan (cons reply n))
         (assert (eq? n (gochan-receive reply)))
         (loop (sub1 n)))))

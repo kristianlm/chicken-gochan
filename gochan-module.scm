@@ -1,17 +1,17 @@
 
 (module gochan (gochan
-                gochan-receive
-                gochan-receive*
+                go
+
+                gochan-recv
                 gochan-send
                 gochan-close
 
-                gochan-closed?
-
-                gochan-for-each
-                gochan-fold
-
-                gochan-select
                 gochan-select*
+                gochan-select
+
+                gochan-after
+                gochan-tick
+                gotimer ;; undocumented, but maybe useful, see comments
                 )
 (import chicken scheme)
 (include "gochan.scm"))
