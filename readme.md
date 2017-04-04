@@ -103,6 +103,10 @@ value at the time of the tick (not when it was received).
 Starts and returns a new srfi-18 thread. Short for `(thread-start!
 (lambda () body ...))`.
 
+## TODO
+
+- Add an `else` clause ([Go]'s `default`) to `gochan-select`
+
 ## Samples
 
 See `./tests/worker-pool.scm` for a port of
