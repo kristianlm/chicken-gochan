@@ -23,8 +23,8 @@
 
 (print "starting")
 
-(define t1 (go (print "chan1 says " (gochan-receive chan))))
-(define t2 (go (print "chan2 says " (gochan-receive chan))))
+(define t1 (go (print "chan1 says " (gochan-recv chan))))
+(define t2 (go (print "chan2 says " (gochan-recv chan))))
 
 (thread-yield!)
 (thread-join! t1)
