@@ -72,7 +72,12 @@
   (ok        gotimer-ok   gotimer-ok-set!)
   (next      gotimer-next))
 
-;; next is a thunk which returns (values when-next data ok)
+;; next must be a thunk which returns (values when-next data ok),
+;; where `when-next` is when to trigger next in
+;; (current-milliseconds). `next` will be called exaclty once on every
+;; timeout and once at "startup" and can thus mutate its own private
+;; state. `next` is called within a gotimer mutex lock, so it
+;; shouldn't ever error!
 (define (gotimer next)
   (receive (when-next data ok) (next)
     (make-gotimer (make-mutex)
