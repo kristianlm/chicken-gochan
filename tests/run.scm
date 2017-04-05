@@ -110,7 +110,7 @@
  (define go1 (go (receive (gochan-recv chan))))
  (define go2 (go (receive (gochan-recv chan))))
  (define go3 (go (receive (gochan-recv chan))))
- (thread-yield!);; ensure goroutines are blocking on chan
+ (thread-sleep! 0.1);; ensure goroutines are blocking on chan
 
  (test "thread waiting 1" 'sleeping (thread-state go1))
  (test "thread waiting 2" 'sleeping (thread-state go2))
