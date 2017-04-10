@@ -62,8 +62,8 @@ Here's an example:
 ```scheme
 (gochan-select
  ((chan1 -> msg ok) (if ok
-                        (print "chan3 says " msg)
-                        (print "chan3 was closed!")))
+                        (print "chan1 says " msg)
+                        (print "chan1 was closed!")))
  ((chan2 <- 123) (print "somebody will get/has gotten 123 on chan2") ))
 ```
 
