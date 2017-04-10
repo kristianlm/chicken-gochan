@@ -104,6 +104,8 @@ Return a `gochan` that will "send" a message every `duration/ms`
 milliseconds. The message is the `(current-milliseconds)`
 value at the time of the tick (not when it was received).
 
+See `tests/worker-pool.scm` for an example of its use.
+
     [procedure] (go body ...)
 
 Starts and returns a new srfi-18 thread. Short for `(thread-start!
