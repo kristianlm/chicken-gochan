@@ -44,11 +44,11 @@ channels, or block until a channel becomes ready. Multiple send and
 receive operations can be specified. The `body` of the first channel
 to be ready will be executed.
 
-Receive clauses, `((chan <- msg [ok]) body ...)`, execute `body` with
+Receive clauses, `((chan -> msg [ok]) body ...)`, execute `body` with
 `msg` bound to the message object, and optionally `ok` bound to a flag
 indicating success (`#t`) or not (`#f` if channel was closed).
 
-Send clauses, `((chan -> msg [ok]) body ...)`, execute `body` after
+Send clauses, `((chan <- msg [ok]) body ...)`, execute `body` after
 `msg` has been sent to a receiver, successfully buffered onto the
 channel, or if channel was closed. Again, the optional variable name
 `ok`, flags whether this was successful.
