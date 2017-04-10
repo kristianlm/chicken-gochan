@@ -16,9 +16,14 @@ synchronization.
 Currently supported:
 
 - receive and send switch (`gochan-select`)
+- buffered channels
 - timeouts as ordinary receive on a channel
 - closable channels
 - load-balancing when multiple channels have data ready
+
+#### TODO
+
+- Add an `else` clause ([Go]'s `default`) to `gochan-select`
 
 ## Comparison to real Go Channels
 
@@ -26,8 +31,8 @@ The API and behaviour largely follows [Go]'s channel API, with some
 exceptions:
 
 - channels don't have any type information
-- sending to a channel that gets closed does not panic, it returns
-  (all sender) immediately with the `ok` flag set to `#f`.
+- sending to a channel that gets closed does not panic, it unblocks
+  all senders immediately with the `ok` flag set to `#f`.
 - closing an already closed channel has no effect, and is not an error
   (`gochan-close` is idempotent).
 
@@ -121,10 +126,6 @@ an example of its use.
 
 Starts and returns a new srfi-18 thread. Short for `(thread-start!
 (lambda () body ...))`.
-
-## TODO
-
-- Add an `else` clause ([Go]'s `default`) to `gochan-select`
 
 ## Samples
 
