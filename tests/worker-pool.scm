@@ -1,30 +1,49 @@
 ;; worker-pools example, based on https://gobyexample.com/worker-pools
 ;; time csi -s worker-pool.scm tells us we spend 1 second doing a
 ;; 5-second job.
-(use gochan miscmacros srfi-1 test)
+(use gochan miscmacros srfi-1)
+
+(define (info . args) (apply print (cons (current-thread) (cons " " args))))
 
 (define (worker jobs results)
   (let loop ()
     (gochan-select
      ((jobs -> job ok)
-      (when ok
-        (print (current-thread) " processing job " job)
-        (thread-sleep! 1)
-        (gochan-send results (* -1 job))
+      (when ok ;; <-- stop when channel closed
+        (thread-sleep! (/ (random 1000) 1000))
+        (if (= 0 (random 100))
+            (info "crash!")
+            (gochan-send results 'my-result))
         (loop)))))
-  (print (current-thread) " worker exit"))
+  (info "worker exit"))
 
-(define jobs (gochan 0))
-(define res  (gochan 0))
+(define jobs (gochan 100)) ;; allow filling jobs queue
+(define res  (gochan 0))   ;; block workers until we get their result
 
-(define workers
-  (map
-   (lambda (x) (thread-start! (make-thread (cut worker jobs res) x)))
-   (iota 10))) ;; <-- 10 worker threads
+;; dispatch worker threads
+(repeat 5 (go (worker jobs res)))
 
-;; 5 jobs
-(repeat* 5 (gochan-send jobs it))
-(gochan-close jobs) ;; this will exit workers when channel is drained
-(repeat* 5 (print "result: " (gochan-recv res)))
+;; queue jobs
+(repeat* 100 (gochan-send jobs it))
+(info "all jobs enqueued")
 
-(for-each thread-join! workers)
+;; allow workers to exit cleanly (`ok` will be #f)
+(gochan-close jobs)
+
+;; show progress every 250ms
+(define progress (gochan-tick 250))
+;; don't hang forever if something goes wrong
+(define timeout  (gochan-after (+ 1000 (* (/ 100 5) 1000))))
+
+(let loop ((done 0))
+  (if (< done 100)
+      (gochan-select
+       ((res -> msg)
+        (loop (add1 done)))
+       ((progress -> _)
+        (print* done " / " 100 "    \r")
+        (loop done))
+       ((timeout -> _)
+        (info "should have completed all jobs by now, sombody crashed :-(")))
+      (info "all jobs completed")))
+
