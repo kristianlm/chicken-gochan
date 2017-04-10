@@ -92,6 +92,12 @@ Return a `gochan` that will "send" a single message after
 `(current-milliseconds)` value at the time of the timeout (not when
 the message was received).
 
+```scheme
+(gochan-select
+ ((chan1 -> msg)                (print "chan1 says " msg))
+ (((gochan-after 1000) -> when) (print "chan1 took too long")))
+```
+
     [procedure] (gochan-tick duration/ms)
 
 Return a `gochan` that will "send" a message every `duration/ms`
