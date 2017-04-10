@@ -90,7 +90,9 @@ operation on `chan`.
 Return a `gochan` that will "send" a single message after
 `duration/ms` milliseconds of its creation. The message is the
 `(current-milliseconds)` value at the time of the timeout (not when
-the message was received).
+the message was received). Receiving more than once on an
+`gochan-after` channel will block indefinitely or deadlock the second
+time.
 
 ```scheme
 (gochan-select
@@ -98,13 +100,20 @@ the message was received).
  (((gochan-after 1000) -> when) (print "chan1 took too long")))
 ```
 
+You cannot send to or close a timer channel. These are special records
+that contain information about when the next timer will
+trigger. Creating timers is a relatively cheap operation, and
+unlike [golang.time.After](https://golang.org/pkg/time/#After), may be
+garbage-collected before the timer triggers.
+
     [procedure] (gochan-tick duration/ms)
 
 Return a `gochan` that will "send" a message every `duration/ms`
 milliseconds. The message is the `(current-milliseconds)`
 value at the time of the tick (not when it was received).
 
-See `tests/worker-pool.scm` for an example of its use.
+See [`tests/worker-pool.scm`](tests/worker-pool.scm) for
+an example of its use.
 
     [procedure] (go body ...)
 
