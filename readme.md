@@ -7,7 +7,9 @@
 fifo queues that are useful for thread communication and
 synchronization.
 
-chicken-gochan has no egg dependencies.
+## Dependencies
+
+- [matchable](wiki.call-cc.org/eggref/4/matchable)
 
 ## Development Status
 
