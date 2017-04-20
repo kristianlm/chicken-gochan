@@ -141,8 +141,11 @@ Starts and returns a new srfi-18 thread. Short for `(thread-start!
 
 ## Samples
 
-See `./tests/worker-pool.scm` for a port of
-[this Go example](https://gobyexample.com/worker-pools).
+- See [`tests/worker-pool.scm`](tests/worker-pool.scm) for a port of
+  [this Go example](https://gobyexample.com/worker-pools).
+- See [`tests/secret.scm`](tests/secret.scm) for a port of
+  [this](https://blog.jayway.com/2014/09/16/comparing-core-async-and-rx-by-example/)
+  [core.async]/[rxjs](https://github.com/Reactive-Extensions/RxJS) challenge.
 
 
 #### TODO
