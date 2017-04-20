@@ -2,6 +2,7 @@
 
  [Chicken Scheme]: http://call-cc.org/
  [Go]: http://golang.org/
+ [core.async]: https://github.com/clojure/core.async
 
 [Go]-inspired channels for [Chicken Scheme]. Essentially thread-safe
 fifo queues that are useful for thread communication and
@@ -21,10 +22,6 @@ Currently supported:
 - closable channels
 - load-balancing when multiple channels have data ready
 
-#### TODO
-
-- Add an `else` clause ([Go]'s `default`) to `gochan-select`
-
 ## Comparison to real Go Channels
 
 The API and behaviour largely follows [Go]'s channel API, with some
@@ -35,6 +32,20 @@ exceptions:
   all senders immediately with the `ok` flag set to `#f`.
 - closing an already closed channel has no effect, and is not an error
   (`gochan-close` is idempotent).
+- Unlike in [Go], you can choose what channels to select on at runtime with `gochan-select*`
+  
+## Comparison to [core.async]
+
+Honestly, I wish I had stolen the [core.async] API instead of the [Go] channel API 
+since that's already a LISP, but here is what we have for now:
+
+- `alt!` is `gochan-select`
+- `alts!` is `gochan-select*`
+- `<!` is `gochan-recv`
+- `>!` is `gochan-send`
+- There is no distinction between `park` and `block` because CHICKEN 
+  doesn't have native threads.
+- The operations don't need to be called inside `(go ...)` blocks.
 
 ## API
 
@@ -111,7 +122,8 @@ You cannot send to or close a timer channel. These are special records
 that contain information about when the next timer will
 trigger. Creating timers is a relatively cheap operation, and
 unlike [golang.time.After](https://golang.org/pkg/time/#After), may be
-garbage-collected before the timer triggers.
+garbage-collected before the timer triggers. Creating a timer does not
+spawn a new thread.
 
     [procedure] (gochan-tick duration/ms)
 
@@ -131,3 +143,12 @@ Starts and returns a new srfi-18 thread. Short for `(thread-start!
 
 See `./tests/worker-pool.scm` for a port of
 [this Go example](https://gobyexample.com/worker-pools).
+
+
+#### TODO
+
+- Add an `else` clause ([Go]'s `default`) to `gochan-select`
+- Perhaps rename the API to [core.async]'s?
+- Add `go-map`, `go-fold` and friends (hopefully simple because we can also do [this](http://clojure.github.io/core.async/#clojure.core.async/map))
+- Support customizing buffering behaviour, like [core.async]'s [`dropping-buffer`](http://clojure.github.io/core.async/#clojure.core.async/dropping-buffer) and [`sliding-buffer`](http://clojure.github.io/core.async/#clojure.core.async/sliding-buffer) (harder!)
+- Add a priority option to `gochan-select*`?
