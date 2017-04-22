@@ -561,6 +561,7 @@
 (define-record-printer gochan
   (lambda (x p)
     (display "#<gochan " p)
+    (if (gochan-closed x) (display "closed "))
     (display (- (queue-length (gochan-senders x))
                 (queue-length (gochan-receivers x)))  p)
     (display " (" p)
