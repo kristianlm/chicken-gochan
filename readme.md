@@ -94,7 +94,7 @@ This is short for `(gochan-select ((chan <- msg)))`.
 
     [procedure] (gochan-recv chan)
 
-This is short for `(gochan-select ((chan -> msg)))`.
+This is short for `(gochan-select ((chan -> msg) msg))`.
 
     [procedure] (gochan-close chan)
 
