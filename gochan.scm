@@ -309,18 +309,13 @@
                                            (gotimer-data timer)
                                            (recv-subscription-meta sub)
                                            (gotimer-ok timer))
-                        ;; receiver was signalled
-                        ;; ok, tick timer.
+                        ;; receiver was signalled ok, tick timer.
                         (gotimer-tick! timer)
-                        ;; semaphore was
-                        ;; already signalled,
-                        ;; can't deliver
-                        ;; value. try next
-                        ;; subscriber!
+                        ;; semaphore was already signalled, can't
+                        ;; deliver value. try next subscriber!
                         (loop))))))
           (info timer " was postponed"))
-      ;; somebody else grabbed our timer
-      ;; trigger from us.
+      ;; somebody else grabbed our timer trigger from us.
       (info timer " is no longer with us"))
   (mutex-unlock! (gotimer-mutex timer)))
 
@@ -477,7 +472,7 @@
             ;; it's important that we remove our semaphore from
             ;; wherever it may be registered so we don't leak it. it
             ;; wouldn't get cleared out otherwise until someone else
-            ;; tries to signal it - which may or may not happen
+            ;; tries to signal it - which may never happen
             (for-each (lambda (chan) (gochan-unsubscribe-senders chan semaphore))   sendsub)
             (for-each (lambda (chan) (gochan-unsubscribe-receivers chan semaphore)) recvsub)
             (for-each (lambda (chan) (gochan-unsubscribe-timers chan semaphore))    timesub)
