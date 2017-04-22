@@ -88,6 +88,31 @@
  (test "200ms to timeout took <220ms " #t (begin (print* "(" duration ")")(< duration 220))))
 
 (test-group
+ "timers: each gochan-tick gets consumed by only one recv"
+
+ (define reply (gochan 1024))
+ (define tick  (gochan-tick 10 #|ms|#))
+ (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 1 ok) (if ok (loop))))))))
+ (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 2 ok) (if ok (loop))))))))
+ (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 3 ok) (if ok (loop))))))))
+ (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 4 ok) (if ok (loop))))))))
+
+ (thread-sleep! .105) ;; just a little past the last tick
+ (gochan-close reply) ;; allow goroutines to exit (this is an antipattern in golang, hopefully ok here!)
+
+ ;; so, we've ticked every 100ms in 1 second. that should give us
+ ;; exactly 10 results, from a random selection of threads above.
+ (define results
+   (let loop ((res '()))
+     (gochan-select ((reply -> msg ok)
+                     (if ok
+                         (loop (cons msg res))
+                         (reverse res))))))
+
+ (test "10ms messages for 105ms means 10 messages" 10 (length results))
+ (print "hopefully different senders: " results))
+
+(test-group
  "closing channels"
  (define chan (gochan 0))
 
