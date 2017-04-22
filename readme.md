@@ -100,7 +100,7 @@ This is short for `(gochan-select ((chan -> msg) msg))`.
 
 Close the channel. Sending to or receiving from a closed channel will
 immediately return a `#f` message with the `ok` flag set to `#f`. Note
-that this will unblock _all_ receivers and senders waiting for an
+that this will unblock existing receivers and senders waiting for an
 operation on `chan`.
 
     [procedure] (gochan-after duration/ms)
