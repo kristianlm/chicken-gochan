@@ -385,8 +385,8 @@
                (timesub '())) ;; list of gotimer we're subscribed on recv/trigger
       (if (and (%gosem-open? semaphore)
                (pair? chans))
-          (let ((chan  (car chans)))
-            (match chan
+          (let ((chanspec  (car chans)))
+            (match chanspec
 
               (((? gochan? chan) meta msg) ;; want to send to chan
                (loop (cdr chans)
