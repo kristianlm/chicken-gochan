@@ -32,6 +32,7 @@ exceptions:
   all senders immediately with the `ok` flag set to `#f`.
 - closing an already closed channel has no effect, and is not an error
   (`gochan-close` is idempotent).
+- `nil`-channels aren't supported, create new forever-blocking `(gochan 0)` instead.
 - Unlike in [Go], you can choose what channels to select on at runtime with `gochan-select*`
   
 ## Comparison to [core.async]
