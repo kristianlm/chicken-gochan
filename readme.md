@@ -64,13 +64,14 @@ receive operations can be specified. The `body` of the first channel
 to be ready will be executed.
 
 Receive clauses, `((chan -> msg [ok]) body ...)`, execute `body` with
-`msg` bound to the message object, and optionally `ok` bound to a flag
-indicating success (`#t`) or not (`#f` if channel was closed).
+`msg` bound to the message object and `ok` bound to a flag indicating
+success (`#t`) or not (`#f` if channel was closed).  If `ok` is
+omitted, `body` becomes `(if ok (begin body ...))`.
 
 Send clauses, `((chan <- msg [ok]) body ...)`, execute `body` after
 `msg` has been sent to a receiver, successfully buffered onto the
-channel, or if channel was closed. Again, the optional variable name
-`ok`, flags whether this was successful.
+channel, or if channel was closed. If `ok` is omitted, `body` becomes
+`(if ok (begin body ...))`.
 
 Only one clause `body` will get executed. `gochan-select` will block
 until a clause is ready. A send/recv on a closed channel yields the

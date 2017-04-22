@@ -534,19 +534,20 @@
 ;; turn gochan-select form into `((,chan1 . ,proc1) (,chan2 . ,proc2) ...)
 (define-syntax gochan-select-alist
   (syntax-rules (-> <-)
-    ;; without optional status variable
+
+    ;; recv without ok flag
     ((_ ((channel -> varname) body ...) rest ...)
-     `((,channel ,(lambda (varname _) (begin body ...)))
+     `((,channel ,(lambda (varname ok) (if ok (begin body ...))))
        ,@(gochan-select-alist rest ...)))
-    ;; with optional status variable
+    ;; recv with ok flag
     ((_ ((channel -> varname ok) body ...) rest ...)
      `((,channel ,(lambda (varname ok) (begin body ...)))
        ,@(gochan-select-alist rest ...)))
-
+    ;; send without ok flag
     ((_ ((channel <- msg) body ...) rest ...)
-     `((,channel ,(lambda (_ _) (begin body ...)) ,msg)
+     `((,channel ,(lambda (_ ok) (if ok (begin body ...))) ,msg)
        ,@(gochan-select-alist rest ...)))
-
+    ;; send with ok flag
     ((_ ((channel <- msg ok) body ...) rest ...)
      `((,channel ,(lambda (_ ok) (begin body ...)) ,msg)
        ,@(gochan-select-alist rest ...)))

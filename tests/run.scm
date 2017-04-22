@@ -131,6 +131,11 @@
        '#f
        (gochan-select ((chan <- 123 ok) ok)))
 
+ (test "gochan-select ignored body of closed chan recv" (void)
+       (gochan-select ((chan -> msg) (error "chan closed, this should never run!"))))
+ (test "gochan-select ignores body of closed chan send"(void)
+       (gochan-select ((chan <- 123) (error "chan closed, this should never run!"))))
+
  (define chan (gochan 0))
  (define go1 (go (receive (gochan-recv chan))))
  (define go2 (go (receive (gochan-recv chan))))
