@@ -294,6 +294,13 @@
       (begin (mutex-unlock! (gotimer-mutex chan))
              #f)))
 
+;; if timer has expired, signal a single receiver that `timer` has
+;; triggered and then tick the timer for its next timeout value.
+;;
+;; whichever thread we're in, unless the timer has expired, transfer
+;; data from the timer to the receiver's semaphore. many threads might
+;; be waiting for the same timer, but the first to timer's mutex will
+;; do the work on behalf of everybody - the rest will do nothing.
 (define (gotimer-signal timer)
   (mutex-lock! (gotimer-mutex timer))
   (info "signalling timer " timer)
@@ -447,13 +454,8 @@
                           ;; no timeout, semaphore must have been
                           ;; signalled, data should be in semaphore
                           (void)
-                          ;; timeout! this part is tricky. now we need
-                          ;; to do some work that would normally be
-                          ;; done on the sender-end since the timer
-                          ;; has no "sender" side code. if we reach
-                          ;; the timer's mutex first here, we are
-                          ;; doing work on behalf of all the timer's
-                          ;; subscribers.
+                          ;; timeout! if we're lucky, our semaphore
+                          ;; won't be open after gotimer-signal.
                           (begin
                             (gotimer-signal timer)
                             ;; at this point, we know there was a
