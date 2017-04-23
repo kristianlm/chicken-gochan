@@ -22,6 +22,8 @@ Currently supported:
 - closable channels
 - load-balancing when multiple channels have data ready
 
+Source code can be found [here](https://github.com/Adellica/chicken-gochan).
+
 ## Comparison to real Go Channels
 
 The API and behaviour largely follows [Go]'s channel API, with some
@@ -75,7 +77,7 @@ Here's an example:
 
 Receive clauses, `((chan -> msg [ok]) body ...)`, execute `body` with
 `msg` bound to the message object and `ok` bound to a flag indicating
-success. Receiving from a closed immediately completes with the `ok`
+success. Receiving from a closed channel immediately completes with the `ok`
 flag set to `#f`.
 
 Send clauses, `((chan <- msg [ok]) body ...)`, execute `body` after
@@ -98,7 +100,7 @@ specified will immediately return `(void)` without executing
 Or like this:
 
 ```scheme
-;; loop forever until chan1 closes
+;; loop forever until chan1 closes. replacing chan2 is important to avoid busy-wait!
 (let loop ((chan2 chan2))
   (gochan-select
     ((chan1 -> msg)    (print "chan1 says " msg) (loop chan2))
@@ -128,10 +130,8 @@ This is short for `(gochan-select ((chan -> msg) msg))`.
 
     [procedure] (gochan-close chan)
 
-Close the channel. Sending to or receiving from a closed channel will
-immediately return a `#f` message with the `ok` flag set to `#f`. Note
-that this will unblock existing receivers and senders waiting for an
-operation on `chan`.
+Close the channel. Note that this will unblock existing receivers and
+senders waiting for an operation on `chan`.
 
     [procedure] (gochan-after duration/ms)
 
