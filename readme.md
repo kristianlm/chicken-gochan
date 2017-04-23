@@ -111,6 +111,13 @@ Or like this:
 `gochan-select` returns the return-value of the executed clause's
 body.
 
+To do a non-blocking receive, you can do the following:
+
+```scheme
+(gochan-select ((chan1 -> msg ok) (if ok msg #!eof))
+               (else 'eagain))
+```
+
     [procedure] (gochan-send chan msg)
 
 This is short for `(gochan-select ((chan <- msg)))`.
@@ -171,7 +178,7 @@ Starts and returns a new srfi-18 thread. Short for `(thread-start!
   [core.async]/[rxjs](https://github.com/Reactive-Extensions/RxJS) challenge.
 
 
-#### TODO
+## TODO
 
 - Perhaps rename the API to [core.async]'s?
 - Add `go-map`, `go-fold` and friends (hopefully simple because we can also do [this](http://clojure.github.io/core.async/#clojure.core.async/map))
