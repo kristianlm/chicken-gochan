@@ -389,7 +389,8 @@
     (let loop ((chans chans)
                (sendsub '()) ;; list of gochans we're subscribed on send
                (recvsub '()) ;; list of gochans we're subscribed on recv
-               (timesub '())) ;; list of gotimer we're subscribed on recv/trigger
+               (timesub '()) ;; list of gotimer we're subscribed on recv/trigger
+               (else-thunk #f))
       (if (and (%gosem-open? semaphore)
                (pair? chans))
           (let ((chanspec  (car chans)))
@@ -401,7 +402,8 @@
                          (cons chan sendsub)
                          sendsub)
                      recvsub
-                     timesub))
+                     timesub
+                     else-thunk))
 
               (((? gochan? chan) meta) ;; want to recv on chan
                (loop (cdr chans)
@@ -409,7 +411,8 @@
                      (if (gochan-signal-sender/subscribe   chan semaphore meta)
                          (cons chan recvsub)
                          recvsub)
-                     timesub))
+                     timesub
+                     else-thunk))
 
               (((? gotimer? chan) meta) ;; want to "recv" on timeout
                (loop (cdr chans)
@@ -417,56 +420,71 @@
                      recvsub
                      (if (gochan-signal-timer/subscribe    chan semaphore meta)
                          (cons chan timesub)
-                         timesub)))))
+                         timesub)
+                     else-thunk))
+
+              (('else thunk) ;; want to execute body if nobody available
+               (loop (cdr chans)
+                     sendsub
+                     recvsub
+                     timesub
+                     thunk))))
           (let %retry () ;; lock semaphore mutex before retrying!
             (if (%gosem-open? semaphore)
-                ;; no data immediately available on any of the
-                ;; channels, so we need to wait for somebody else to
-                ;; signal us.
-                (if (pair? timesub)
-                    ;; we need to resort timesub here in case the
-                    ;; previous timeout caused gotimer-when
-                    ;; modifications. obs: cheeky gotimer-when peek
-                    ;; without mutex! since we're mutex-free, timers
-                    ;; may trigger at any time in here. but as long as
-                    ;; we sort *after* we pick out gotimer-when, we're
-                    ;; sure to not all of a sudden have our timeout
-                    ;; become #f and that's the only really critical
-                    ;; thing.
-                    (let* ((timers* (sort (map (lambda (timer)
-                                                 (cons (gotimer-when timer) timer))
-                                               timesub)
-                                          (lambda (a b) ;; sort #f's last
-                                            (let ((a (car a))
-                                                  (b (car b)))
-                                              (if a
-                                                  (if b (< a b) #t)
-                                                  #f)))))
-                           (timer (cdr (car timers*)))
-                           (timeout (let ((when (car (car timers*))))
-                                      (and when (max 0 (/ (- when
-                                                             (current-milliseconds))
-                                                          1000))))))
-                      (info "wait for data with timer " timer " and timeout " timeout)
-                      (if (mutex-unlock! (gosem-mutex semaphore)
-                                         (gosem-cv semaphore)
-                                         timeout)
-                          ;; no timeout, semaphore must have been
-                          ;; signalled, data should be in semaphore
-                          (void)
-                          ;; timeout! if we're lucky, our semaphore
-                          ;; won't be open after gotimer-signal.
-                          (begin
-                            (gotimer-signal timer)
-                            ;; at this point, we know there was a
-                            ;; timeout on timer but we don't know who
-                            ;; received its signal.
-                            (mutex-lock! (gosem-mutex semaphore))
-                            (%retry))))
-                    ;; we don't have any timers, wait on cv forever
-                    (begin (info "wait for data without timer")
-                           (mutex-unlock! (gosem-mutex semaphore)
-                                          (gosem-cv semaphore))))
+                (if else-thunk
+                    ;; no data immediately available, but we have an
+                    ;; else clause
+                    (begin
+                      (gosem-meta-set! semaphore else-thunk)
+                      (gosem-data-set! semaphore #f)
+                      (gosem-ok-set!   semaphore #t))
+                    ;; no data immediately available on any of the
+                    ;; channels, so we need to wait for somebody else
+                    ;; to signal us.
+                    (if (pair? timesub)
+                        ;; we need to resort timesub here in case the
+                        ;; previous timeout caused gotimer-when
+                        ;; modifications. obs: cheeky gotimer-when peek
+                        ;; without mutex! since we're mutex-free, timers
+                        ;; may trigger at any time in here. but as long as
+                        ;; we sort *after* we pick out gotimer-when, we're
+                        ;; sure to not all of a sudden have our timeout
+                        ;; become #f and that's the only really critical
+                        ;; thing.
+                        (let* ((timers* (sort (map (lambda (timer)
+                                                     (cons (gotimer-when timer) timer))
+                                                   timesub)
+                                              (lambda (a b) ;; sort #f's last
+                                                (let ((a (car a))
+                                                      (b (car b)))
+                                                  (if a
+                                                      (if b (< a b) #t)
+                                                      #f)))))
+                               (timer (cdr (car timers*)))
+                               (timeout (let ((when (car (car timers*))))
+                                          (and when (max 0 (/ (- when
+                                                                 (current-milliseconds))
+                                                              1000))))))
+                          (info "wait for data with timer " timer " and timeout " timeout)
+                          (if (mutex-unlock! (gosem-mutex semaphore)
+                                             (gosem-cv semaphore)
+                                             timeout)
+                              ;; no timeout, semaphore must have been
+                              ;; signalled, data should be in semaphore
+                              (void)
+                              ;; timeout! if we're lucky, our semaphore
+                              ;; won't be open after gotimer-signal.
+                              (begin
+                                (gotimer-signal timer)
+                                ;; at this point, we know there was a
+                                ;; timeout on timer but we don't know who
+                                ;; received its signal.
+                                (mutex-lock! (gosem-mutex semaphore))
+                                (%retry))))
+                        ;; we don't have any timers, wait on cv forever
+                        (begin (info "wait for data without timer")
+                               (mutex-unlock! (gosem-mutex semaphore)
+                                              (gosem-cv semaphore)))))
                 ;; yey, semaphore has data already!
                 (begin (info "no need to wait, data already there")
                        (mutex-unlock! (gosem-mutex semaphore))))
@@ -533,7 +551,7 @@
 
 ;; turn gochan-select form into `((,chan1 . ,proc1) (,chan2 . ,proc2) ...)
 (define-syntax gochan-select-alist
-  (syntax-rules (-> <-)
+  (syntax-rules (-> <- else)
 
     ;; recv without ok flag
     ((_ ((channel -> varname) body ...) rest ...)
@@ -551,6 +569,9 @@
     ((_ ((channel <- msg ok) body ...) rest ...)
      `((,channel ,(lambda (_ ok) (begin body ...)) ,msg)
        ,@(gochan-select-alist rest ...)))
+    ;; default (no rest ..., else must be last expression)
+    ((_ (else body ...))
+     `((else ,(lambda (_ _) (begin body ...)))))
 
     ((_) '())))
 

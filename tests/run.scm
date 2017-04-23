@@ -178,6 +178,34 @@
  (test "chan closed"     #f (gochan-recv chan)))
 
 (test-group
+ "gochan-select else clause"
+
+ (test
+  "else clause gets executed if nobody else ready"
+  'my-else
+  (gochan-select
+   (((gochan 0) -> msg) (error "should never happen"))
+   (else 'my-else)))
+
+ (define chan (gochan 100))
+ (list-tabulate 100 (lambda (i) (gochan-send chan i)))
+ (test "else clause does not get executed if data ready"
+       (make-list 100 'data)
+       (list-tabulate 100
+                      (lambda (i)
+                        (gochan-select (( chan -> when) 'data)
+                                       (else (error "should never happen!!"))))))
+
+ (test "else clause does not get executed if timeout ready"
+       (make-list 100 'data)
+       (list-tabulate 100
+                      (lambda (i)
+                        (gochan-select (( (gochan-after 0) -> when) 'data)
+                                       (else (error "should never happen!!"))))))
+
+ )
+
+(test-group
  "load-balancer"
 
  ;; create some chans with lots of data immediately available

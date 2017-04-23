@@ -56,35 +56,56 @@ Construct a channel with a maximum buffer-size of `capacity`. If
 `capacity` is `0`, the channel is unbuffered and all its operations
 will block until a remote end sends/receives.
 
-    [procedure] (gochan-select ((chan <-|-> msg [ ok ]) body ...) ...)
+    [procedure] (gochan-select ((chan <-|-> msg [ ok ]) body ...) ... [(else body ...])
 
-This is a channel switch where you can receive or send to one or more
-channels, or block until a channel becomes ready. Multiple send and
-receive operations can be specified. The `body` of the first channel
-to be ready will be executed.
-
-Receive clauses, `((chan -> msg [ok]) body ...)`, execute `body` with
-`msg` bound to the message object and `ok` bound to a flag indicating
-success (`#t`) or not (`#f` if channel was closed).  If `ok` is
-omitted, `body` becomes `(if ok (begin body ...))`.
-
-Send clauses, `((chan <- msg [ok]) body ...)`, execute `body` after
-`msg` has been sent to a receiver, successfully buffered onto the
-channel, or if channel was closed. If `ok` is omitted, `body` becomes
-`(if ok (begin body ...))`.
-
-Only one clause `body` will get executed. `gochan-select` will block
-until a clause is ready. A send/recv on a closed channel yields the
-`#f` message and a `#f` `ok` immediately (this never blocks).
+This is a channel switch that will send or receive on a single
+channel, picking whichever clause is able to complete soonest. If no
+clause is ready, `gochan-select` will block until one does, unless
+`else` is specified which will by execute its body instead of
+blocking. Multiple send and receive clauses can be specified
+interchangeably. Note that only one clause will be served.
 
 Here's an example:
 
 ```scheme
 (gochan-select
- ((chan1 -> msg ok) (if ok
-                        (print "chan1 says " msg)
-                        (print "chan1 was closed!")))
- ((chan2 <- 123) (print "somebody will get/has gotten 123 on chan2") ))
+  ((chan1 -> msg ok) (if ok (print "chan1 says " msg) (print "chan1 closed!")))
+  ((chan2 -> msg ok) (if ok (print "chan2 says " msg) (print "chan2 closed!"))))
+```
+
+Receive clauses, `((chan -> msg [ok]) body ...)`, execute `body` with
+`msg` bound to the message object and `ok` bound to a flag indicating
+success. Receiving from a closed immediately completes with the `ok`
+flag set to `#f`.
+
+Send clauses, `((chan <- msg [ok]) body ...)`, execute `body` after
+`msg` has been sent to a receiver, successfully buffered onto the
+channel, or if channel was closed. Sending to a closed channel
+immediately completes with the `ok` flag set to `#f`.
+
+A send or receive clause on a closed channel with no `ok` binding
+specified will immediately return `(void)` without executing
+`body`. This can be combined with recursion like this:
+
+```scheme
+;; loop forever until either chan1 or chan2 closes
+(let loop ()
+   (gochan-select
+    ((chan1 -> msg) (print "chan1 says " msg) (loop))
+    ((chan2 <- 123) (print "chan2 got  " 123) (loop))))
+```
+
+Or like this:
+
+```scheme
+;; loop forever until chan1 closes
+(let loop ((chan2 chan2))
+  (gochan-select
+    ((chan1 -> msg)    (print "chan1 says " msg) (loop chan2))
+    ((chan2 -> msg ok) (cond (ok (print "chan2 says " msg) (loop chan2))
+                             (else (print "chan2 closed, keep going")
+                                   ;; replace chan2 with new forever-blocking channel:
+                                   (loop (gochan 0)))))))
 ```
 
 `gochan-select` returns the return-value of the executed clause's
@@ -152,7 +173,6 @@ Starts and returns a new srfi-18 thread. Short for `(thread-start!
 
 #### TODO
 
-- Add an `else` clause ([Go]'s `default`) to `gochan-select`
 - Perhaps rename the API to [core.async]'s?
 - Add `go-map`, `go-fold` and friends (hopefully simple because we can also do [this](http://clojure.github.io/core.async/#clojure.core.async/map))
 - Support customizing buffering behaviour, like [core.async]'s [`dropping-buffer`](http://clojure.github.io/core.async/#clojure.core.async/dropping-buffer) and [`sliding-buffer`](http://clojure.github.io/core.async/#clojure.core.async/sliding-buffer) (harder!)
