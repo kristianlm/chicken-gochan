@@ -56,7 +56,7 @@
 
 (define results
   (let loop ((results '()))
-    (if (<= (length results) 3)
+    (if (< (length results) 3)
 	(begin
 	  (gochan-select
 	   ((c -> result)  (loop (cons result results)))
