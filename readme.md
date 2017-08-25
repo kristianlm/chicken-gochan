@@ -31,7 +31,7 @@ exceptions:
 
 - channels don't have any type information
 - sending to a channel that gets closed does not panic, it unblocks
-  all senders immediately with the `ok` flag set to `#f`.
+  all senders immediately with the `fail` flag set to non-`#f`.
 - closing an already closed channel has no effect, and is not an error
   (`gochan-close` is idempotent).
 - `nil`-channels aren't supported, create new forever-blocking `(gochan 0)` instead.
@@ -58,7 +58,7 @@ Construct a channel with a maximum buffer-size of `capacity`. If
 `capacity` is `0`, the channel is unbuffered and all its operations
 will block until a remote end sends/receives.
 
-    [procedure] (gochan-select ((chan <-|-> msg [ ok ]) body ...) ... [(else body ...])
+    [procedure] (gochan-select ((chan <-|-> msg [ fail ]) body ...) ... [(else body ...])
 
 This is a channel switch that will send or receive on a single
 channel, picking whichever clause is able to complete soonest. If no
@@ -71,22 +71,22 @@ Here's an example:
 
 ```scheme
 (gochan-select
-  ((chan1 -> msg ok) (if ok (print "chan1 says " msg) (print "chan1 closed!")))
-  ((chan2 -> msg ok) (if ok (print "chan2 says " msg) (print "chan2 closed!"))))
+  ((chan1 -> msg fail) (if fail (print "chan1 closed!") (print "chan1 says " msg)))
+  ((chan2 -> msg fail) (if fail (print "chan2 closed!") (print "chan2 says " msg))))
 ```
 
-Receive clauses, `((chan -> msg [ok]) body ...)`, execute `body` with
-`msg` bound to the message object and `ok` bound to a flag indicating
-success. Receiving from a closed channel immediately completes with the `ok`
-flag set to `#f`.
+Receive clauses, `((chan -> msg [fail]) body ...)`, execute `body`
+with `msg` bound to the message object and `fail` bound to a flag
+indicating failure. Receiving from a closed channel immediately
+completes with this `fail` flag set to non-`#f`.
 
-Send clauses, `((chan <- msg [ok]) body ...)`, execute `body` after
+Send clauses, `((chan <- msg [fail]) body ...)`, execute `body` after
 `msg` has been sent to a receiver, successfully buffered onto the
 channel, or if channel was closed. Sending to a closed channel
-immediately completes with the `ok` flag set to `#f`.
+immediately completes with the `fail` flag set to `#f`.
 
-A send or receive clause on a closed channel with no `ok` binding
-specified will immediately return `(void)` without executing
+A send or receive clause on a closed channel with no `fail`-flag
+binding specified will immediately return `(void)` without executing
 `body`. This can be combined with recursion like this:
 
 ```scheme
@@ -103,11 +103,13 @@ Or like this:
 ;; loop forever until chan1 closes. replacing chan2 is important to avoid busy-wait!
 (let loop ((chan2 chan2))
   (gochan-select
-    ((chan1 -> msg)    (print "chan1 says " msg) (loop chan2))
-    ((chan2 -> msg ok) (cond (ok (print "chan2 says " msg) (loop chan2))
-                             (else (print "chan2 closed, keep going")
-                                   ;; replace chan2 with new forever-blocking channel:
-                                   (loop (gochan 0)))))))
+   ((chan1 -> msg)      (print "chan1 says " msg) (loop chan2))
+   ((chan2 -> msg fail) (if fail
+                            (begin (print "chan2 closed, keep going")
+                                   ;; create new forever-blocking channel
+                                   (loop (gochan 0)))
+                            (begin (print "chan2 says " msg)
+                                   (loop chan2))))))
 ```
 
 `gochan-select` returns the return-value of the executed clause's
@@ -116,7 +118,7 @@ body.
 To do a non-blocking receive, you can do the following:
 
 ```scheme
-(gochan-select ((chan1 -> msg ok) (if ok msg #!eof))
+(gochan-select ((chan1 -> msg fail) (if fail #!eof msg))
                (else 'eagain))
 ```
 
@@ -128,14 +130,22 @@ This is short for `(gochan-select ((chan <- msg)))`.
 
 This is short for `(gochan-select ((chan -> msg) msg))`.
 
-    [procedure] (gochan-close chan)
+    [procedure] (gochan-close chan [fail-flag])
 
 Close the channel. Note that this will unblock existing receivers and
-senders waiting for an operation on `chan`.
+senders waiting for an operation on `chan` with the `fail-flag` set to
+a non-`#f` value. All _future_ receivers and senders will also
+immdiately unblock in this way, so watch out for busy-loops.
+
+The optional `fail-flag` can be used to specify an alternative to the
+default `#t`. As this value is given to all receivers and senders of
+`chan`, the `fail-flag` can be used as a "broadcast"
+mechanism. `fail-flag` cannot be `#f` as that would indicate a
+successful message transaction.
 
     [procedure] (gochan-after duration/ms)
 
-Return a `gochan` that will "send" a single message after
+Returns a `gochan` that will "send" a single message after
 `duration/ms` milliseconds of its creation. The message is the
 `(current-milliseconds)` value at the time of the timeout (not when
 the message was received). Receiving more than once on an

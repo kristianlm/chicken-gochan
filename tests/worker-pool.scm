@@ -8,13 +8,12 @@
 (define (worker jobs results)
   (let loop ()
     (gochan-select
-     ((jobs -> job ok)
-      (when ok ;; <-- stop when channel closed
-        (thread-sleep! (/ (random 1000) 1000))
-        (if (= 0 (random 100))
-            (info "crash!")
-            (gochan-send results 'my-result))
-        (loop)))))
+     ((jobs -> job) ;; no fail-flag here means we break (loop) when jobs is closed
+      (thread-sleep! (/ (random 1000) 1000))
+      (if (= 0 (random 100))
+          (info "crash!")
+          (gochan-send results 'my-result))
+      (loop))))
   (info "worker exit"))
 
 (define jobs (gochan 100)) ;; allow filling jobs queue

@@ -29,13 +29,13 @@
 ;; skipped (you cannot re-deliver data to a (not %gosem-open?)
 ;; semaphore).
 (define-record-type gosem
-  (make-gosem mutex cv data meta ok)
+  (make-gosem mutex cv data meta fail)
   gosem?
   (mutex gosem-mutex)
   (cv    gosem-cv)
   (data  gosem-data gosem-data-set!)
   (meta  gosem-meta gosem-meta-set!)
-  (ok    gosem-ok   gosem-ok-set!))
+  (fail  gosem-fail gosem-fail-set!))
 
 (define (make-semaphore)
   (make-gosem (make-mutex)
@@ -48,13 +48,13 @@
 
 ;; returns #t on successful signal, #f if semaphore was already
 ;; signalled.
-(define (semaphore-signal! sem data meta ok)
-  (info "signalling " sem " meta: " meta " data: " data " ok: " ok)
+(define (semaphore-signal! sem data meta fail)
+  (info "signalling " sem " meta: " meta " data: " data " fail: " fail)
   (mutex-lock! (gosem-mutex sem))
   (cond ((%gosem-open? sem) ;; available!
          (gosem-data-set! sem data)
          (gosem-meta-set! sem meta)
-         (gosem-ok-set! sem ok)
+         (gosem-fail-set! sem fail)
          (condition-variable-signal! (gosem-cv sem))
          (mutex-unlock! (gosem-mutex sem))
          #t)
@@ -63,52 +63,52 @@
          #f)))
 
 (define-record-type gotimer
-  (make-gotimer mutex receivers when data ok next)
+  (make-gotimer mutex receivers when data fail next)
   gotimer?
   (mutex     gotimer-mutex)
   (receivers gotimer-receivers gotimer-receivers-set!)
   (when      gotimer-when gotimer-when-set!) ;; when may be #f if never to trigger again
   (data      gotimer-data gotimer-data-set!)
-  (ok        gotimer-ok   gotimer-ok-set!)
+  (fail      gotimer-fail gotimer-fail-set!)
   (next      gotimer-next))
 
-;; next must be a thunk which returns (values when-next data ok),
+;; next must be a thunk which returns (values when-next data fail),
 ;; where `when-next` is when to trigger next in
 ;; (current-milliseconds). `next` will be called exaclty once on every
 ;; timeout and once at "startup" and can thus mutate its own private
 ;; state. `next` is called within a gotimer mutex lock, so it
 ;; shouldn't ever error!
 (define (gotimer next)
-  (receive (when-next data ok) (next)
+  (receive (when-next data fail) (next)
     (make-gotimer (make-mutex)
                   (list->queue '())
                   when-next
                   data
-                  ok
+                  fail
                   next)))
 
 ;; it's important that when-next is set in lockstep as gotimer-next is
 ;; called so that gotimer-next get's called only once per "when" it
 ;; returns. gotimer-next should never be called if gotimer-when is #f.
 (define (gotimer-tick! timer)
-  (receive (when-next data ok) ((gotimer-next timer))
+  (receive (when-next data fail) ((gotimer-next timer))
     (gotimer-when-set! timer when-next) ;; may be #f if never to timout again
     (gotimer-data-set! timer data)
-    (gotimer-ok-set!   timer ok)))
+    (gotimer-fail-set! timer fail)))
 
 
 (define (gochan-after duration:ms)
   (let ((when (+ (current-milliseconds) duration:ms)))
     (gotimer (lambda () (let ((tmp when))
                      (set! when #f) ;; never trigger again
-                     ;;      when-next  data ok
-                     (values tmp        tmp  #t))))))
+                     ;;      when-next  data fail
+                     (values tmp        tmp  #f))))))
 
 (define (gochan-tick duration:ms)
   (let ((when (current-milliseconds)))
     (gotimer (lambda ()
                (set! when (+ when duration:ms))
-               (values when when #t)))))
+               (values when when #f)))))
 
 (define-record-type gochan
   (make-gochan mutex cap buffer receivers senders closed)
@@ -155,14 +155,14 @@
 
   (if (gochan-closed chan)
       ;; trying to send to a closed channel! the golang channel api
-      ;; panics in this situation. but we've got the `ok` variable
+      ;; panics in this situation. but we've got the `fail` variable
       ;; conveniently available at the results of gochan-sends (just
       ;; like on gochan-receive), so let's try this instead: sending
       ;; to a closed channel will not panic, but instead immediately
-      ;; unblock and receive a zero-value with `ok` set to #f.
+      ;; unblock and receive a zero-value with `fail` set to #t.
       (begin
         (gosem-meta-set! %sem meta) ;; closes semaphore
-        (gosem-ok-set!   %sem #f) ;; sending to closed channel is not ok!
+        (gosem-fail-set! %sem (gochan-closed chan)) ;; fail-flag can't be #f here
         (mutex-unlock! (gochan-mutex chan))
         #f)
       (let ((q (gochan-receivers chan)))
@@ -174,7 +174,7 @@
                 (if (%gochan-free-capacity? chan)
                     (begin (queue-add! (gochan-buffer chan) msg)
                            (gosem-meta-set! %sem meta) ;; closes semaphore
-                           (gosem-ok-set!   %sem #t)
+                           (gosem-fail-set! %sem #f)
                            (mutex-unlock! (gochan-mutex chan))
                            #f)
                     ;; buffer didn't help us either! we are running
@@ -188,9 +188,10 @@
                            #t)))
               (let ((sub (queue-remove! q)))
                 (if (semaphore-signal! (recv-subscription-sem sub) msg
-                                       (recv-subscription-meta sub) #t)
+                                       (recv-subscription-meta sub) #f)
                     ;; receiver was signalled, signal self
                     (begin (gosem-meta-set! %sem meta) ;; close!
+                           (gosem-fail-set! %sem #f) ;; delivered, sender-fail-flag says ok
                            (mutex-unlock! (gochan-mutex chan))
                            #f)
                     ;; receiver was already signalled by somebody else,
@@ -211,7 +212,7 @@
       ;; semaphore for ourselves (then signal any blocked senders).
       (begin (gosem-meta-set! %sem meta) ;; close
              (gosem-data-set! %sem (queue-remove! (gochan-buffer chan)))
-             (gosem-ok-set!   %sem #t)
+             (gosem-fail-set! %sem #f)
              ;; here's a trick! since we just freed 1 buffer item, so
              ;; we might have need to unblocking a sender who's
              ;; waiting for buffer capacity. we can do it all in one
@@ -223,7 +224,7 @@
                  (unless (queue-empty? q) ;; nobody to signal? no problem
                    (let ((sub (queue-remove! q)))
                      (if (semaphore-signal! (send-subscription-sem sub) #f
-                                            (send-subscription-meta sub) #t)
+                                            (send-subscription-meta sub) #f)
                          ;; sender was signalled/unblocked! add its
                          ;; data to the buffer
                          (begin (queue-add! (gochan-buffer chan)
@@ -237,7 +238,7 @@
           ;; oh no! trying to receive from a closed channel. you know the
           ;; drill.
           (begin (gosem-meta-set! %sem meta)
-                 (gosem-ok-set!   %sem #f) ;; not ok this time around!
+                 (gosem-fail-set! %sem (gochan-closed chan)) ;; fail-flag from gochan-close
                  (mutex-unlock! (gochan-mutex chan))
                  #f)
           (let ((q (gochan-senders chan)))
@@ -254,12 +255,13 @@
                   (let ((sub (queue-remove! q)))
                     ;; signalling a sender-semaphore. they don't care about
                     ;; data, they just want to be unblocked.
-                    (if (semaphore-signal! (send-subscription-sem sub) #f (send-subscription-meta sub) #t)
+                    (if (semaphore-signal! (send-subscription-sem sub) #f
+                                           (send-subscription-meta sub) #f)
                         ;; receiver was signalled, fill in our semaphore
                         ;; (which can return immediately)
                         (begin (gosem-meta-set! %sem meta) ;; close
                                (gosem-data-set! %sem (send-subscription-data sub))
-                               (gosem-ok-set!   %sem #t)
+                               (gosem-fail-set! %sem #f)
                                (mutex-unlock! (gochan-mutex chan))
                                #f)
                         ;; sender was already signalled externally, try next
@@ -281,7 +283,7 @@
             (begin
               (gosem-meta-set! %sem meta) ;; <-- also closes %sem
               (gosem-data-set! %sem (gotimer-data chan))
-              (gosem-ok-set!   %sem (gotimer-ok   chan))
+              (gosem-fail-set! %sem (gotimer-fail chan))
               (gotimer-tick! chan)
               (mutex-unlock! (gotimer-mutex chan))
               #f)
@@ -315,7 +317,7 @@
                     (if (semaphore-signal! (recv-subscription-sem sub)
                                            (gotimer-data timer)
                                            (recv-subscription-meta sub)
-                                           (gotimer-ok timer))
+                                           (gotimer-fail timer))
                         ;; receiver was signalled ok, tick timer.
                         (gotimer-tick! timer)
                         ;; semaphore was already signalled, can't
@@ -362,10 +364,10 @@
 ;;
 ;; gochan-select* returns:
 ;;
-;; (msg ok meta)
+;; (msg fail meta)
 ;;
-;; where msg is the message that was send over the channel, ok is #f
-;; is channel was closed and #t otherwise, meta is the datum supplied
+;; where msg is the message that was send over the channel, fail is (not #f)
+;; if channel was closed and #f otherwise, meta is the datum supplied
 ;; in the arguments.
 ;;
 ;; if a message arrived on chan3 above, for example, meta would be
@@ -437,7 +439,7 @@
                     (begin
                       (gosem-meta-set! semaphore else-thunk)
                       (gosem-data-set! semaphore #f)
-                      (gosem-ok-set!   semaphore #t))
+                      (gosem-fail-set! semaphore #f))
                     ;; no data immediately available on any of the
                     ;; channels, so we need to wait for somebody else
                     ;; to signal us.
@@ -499,7 +501,7 @@
 
             (assert (gosem-meta semaphore)) ;; just to make sure
             (values (gosem-data semaphore)
-                    (gosem-ok   semaphore)
+                    (gosem-fail semaphore)
                     (gosem-meta semaphore)))))))
 
 (define (gochan-send chan msg)
@@ -513,7 +515,11 @@
 
 ;; close channel. unlike in go, this operation is idempotent (and
 ;; hopefully that's a good idea).
-(define (gochan-close chan)
+(define (gochan-close chan #!optional (fail-flag #t))
+
+  (if (eq? #f fail-flag)
+      (error "fail-flag for closed channel cannot be #f"))
+
   (mutex-lock! (gochan-mutex chan))
 
   ;; NOTE: should we error here, like go, if channel is already
@@ -523,7 +529,8 @@
         "receivers: " (queue->list (gochan-receivers chan))
         "senders: "   (queue->list (gochan-senders   chan)))
 
-  (gochan-closed-set! chan #t)
+  (gochan-closed-set! chan fail-flag)
+
   ;; signal *everybody* that we're closing (waking them all up,
   ;; because now there are tons of #f-messages available to them)
   (let ((q (gochan-receivers chan)))
@@ -531,14 +538,14 @@
       (unless (queue-empty? q)
         (let ((sub (queue-remove! q)))
           (semaphore-signal! (recv-subscription-sem  sub) #f ;; no data
-                             (recv-subscription-meta sub) #f) ;; not ok
+                             (recv-subscription-meta sub) (gochan-closed chan)) ;; fail-flag
           (%loop)))))
   (let ((q (gochan-senders chan)))
     (let %loop ()
       (unless (queue-empty? q)
         (let ((sub (queue-remove! q)))
           (semaphore-signal! (send-subscription-sem  sub) #f ;; no data
-                             (send-subscription-meta sub) #f) ;; not ok
+                             (send-subscription-meta sub) (gochan-closed chan)) ;; fail-flag
           (%loop)))))
 
   (mutex-unlock! (gochan-mutex chan)))
@@ -553,21 +560,21 @@
 (define-syntax gochan-select-alist
   (syntax-rules (-> <- else)
 
-    ;; recv without ok flag
+    ;; recv without fail flag
     ((_ ((channel -> varname) body ...) rest ...)
-     `((,channel ,(lambda (varname ok) (if ok (begin body ...))))
+     `((,channel ,(lambda (varname fail) (unless fail (begin body ...))))
        ,@(gochan-select-alist rest ...)))
-    ;; recv with ok flag
-    ((_ ((channel -> varname ok) body ...) rest ...)
-     `((,channel ,(lambda (varname ok) (begin body ...)))
+    ;; recv with fail flag
+    ((_ ((channel -> varname fail) body ...) rest ...)
+     `((,channel ,(lambda (varname fail) (begin body ...)))
        ,@(gochan-select-alist rest ...)))
-    ;; send without ok flag
+    ;; send without fail flag
     ((_ ((channel <- msg) body ...) rest ...)
-     `((,channel ,(lambda (_ ok) (if ok (begin body ...))) ,msg)
+     `((,channel ,(lambda (_ fail) (unless fail (begin body ...))) ,msg)
        ,@(gochan-select-alist rest ...)))
-    ;; send with ok flag
-    ((_ ((channel <- msg ok) body ...) rest ...)
-     `((,channel ,(lambda (_ ok) (begin body ...)) ,msg)
+    ;; send with fail flag
+    ((_ ((channel <- msg fail) body ...) rest ...)
+     `((,channel ,(lambda (_ fail) (begin body ...)) ,msg)
        ,@(gochan-select-alist rest ...)))
     ;; default (no rest ..., else must be last expression)
     ((_ (else body ...))
@@ -578,9 +585,9 @@
 (define-syntax gochan-select
   (syntax-rules ()
     ((_ form ...)
-     (receive (msg ok meta)
+     (receive (msg fail meta)
          (gochan-select* (gochan-select-alist form ...))
-       (meta msg ok)))))
+       (meta msg fail)))))
 
 (define-record-printer gochan
   (lambda (x p)

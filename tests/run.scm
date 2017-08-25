@@ -12,8 +12,8 @@
  "unbuffered 1 channel gochan-select* meta"
  (define chan (gochan 0))
  (go (gochan-send chan 'hello))
- ;;      msg   ok meta
- (test '(hello #t meta!) (receive (gochan-select* `((,chan meta!))))))
+ ;;      msg   fail meta
+ (test '(hello #f   meta!) (receive (gochan-select* `((,chan meta!))))))
 
 (test-group
  "unbuffered 2 channels, 1 channel ready"
@@ -104,31 +104,58 @@
  ;; exactly 10 results, from a random selection of threads above.
  (define results
    (let loop ((res '()))
-     (gochan-select ((reply -> msg ok)
-                     (if ok
-                         (loop (cons msg res))
-                         (reverse res))))))
+     (gochan-select ((reply -> msg fail)
+                     (if fail
+                         (reverse res)
+                         (loop (cons msg res)))))))
 
  (test "10ms messages for 105ms means 10 messages" 10 (length results))
  (print "hopefully different senders: " results))
 
 (test-group
  "closing channels"
+
+ (define chan1 (gochan 1))
+ (gochan-send chan1 'test)
+ (gochan-close chan1)
+ ;;                                                         data fail meta
+ (test "closed, non-empty buffered channel gives us data" '(test #f   #t) (receive (gochan-recv chan1)))
+ (test "closed, empty     buffered channel fails"         '(#f   #t   #t) (receive (gochan-recv chan1)))
+
  (define chan (gochan 0))
 
  (go (gochan-recv chan)
      (gochan-recv chan))
  (thread-yield!)
- (test "sender `ok` flag success 1" #t (gochan-select ((chan <- 'hello ok) ok)))
- (test "sender `ok` flag success 2" #t (gochan-select ((chan <- 'hi    ok) ok)))
+ (test "sender fail-flag says no error 1" #f (gochan-select ((chan <- 'hello fail) fail)))
+ (test "sender fail-flag says no error 2" #f (gochan-select ((chan <- 'hi    fail) fail)))
 
+ (define r1 'untouched)
+ (define r2 'untouched)
+ (define r3 'untouched)
+ (define r4 'untouched)
 
- (gochan-close chan)
+ (define r1-thread (go (gochan-select ((chan -> msg)        (set! r1 'touched)))))
+ (define r2-thread (go (gochan-select ((chan -> msg fail)   (set! r2 fail)))))
+ (define r3-thread (go (gochan-select ((chan <- 'TEST)      (set! r3 'touched)))))
+ (define r4-thread (go (gochan-select ((chan <- 'TEST fail) (set! r4 fail)))))
+
+ (gochan-close chan 'my-fail-flag)
+
+ (thread-sleep! 0.1) ;; r1/r2 threads should exit quickly
+
+ (test "blocked receiving thread was terminated" 'dead (thread-state r1-thread))
+
+ (test "blocked receiving thread with implicit fail flag" 'untouched (values r1))
+ (test "blocked receiving thread with explicit fail flag" 'my-fail-flag (values r2))
+ (test "blocked sending   thread with implicit fail flag" 'untouched (values r3))
+ (test "blocked sending   thread with explicit fail flag" 'my-fail-flag (values r4))
+
  (test "receiving from closed channel sync"
-       '(#f #f)
-       (gochan-select ((chan -> msg ok) (list msg ok))))
+       '(#f my-fail-flag)
+       (gochan-select ((chan -> msg fail) (list msg fail))))
  (test "sending to closed channel sync"
-       '#f
+       'my-fail-flag
        (gochan-select ((chan <- 123 ok) ok)))
 
  (test "gochan-select ignored body of closed chan recv" (void)
@@ -147,10 +174,10 @@
  (test "thread waiting 3" 'sleeping (thread-state go3))
 
  (gochan-close chan)
- ;;                                   data ok  meta
- (test "thread awakened by close 1" '(#f   #f  #t) (thread-join! go1))
- (test "thread awakened by close 2" '(#f   #f  #t) (thread-join! go2))
- (test "thread awakened by close 3" '(#f   #f  #t) (thread-join! go3)))
+ ;;                                   data fail meta
+ (test "thread awakened by close 1" '(#f   #t   #t) (thread-join! go1))
+ (test "thread awakened by close 2" '(#f   #t   #t) (thread-join! go2))
+ (test "thread awakened by close 3" '(#f   #t   #t) (thread-join! go3)))
 
 (test-group
  "buffered channels"
