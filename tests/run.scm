@@ -92,10 +92,10 @@
 
  (define reply (gochan 1024))
  (define tick  (gochan-tick 10 #|ms|#))
- (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 1 ok) (if ok (loop))))))))
- (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 2 ok) (if ok (loop))))))))
- (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 3 ok) (if ok (loop))))))))
- (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 4 ok) (if ok (loop))))))))
+ (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 1) (loop)))))))
+ (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 2) (loop)))))))
+ (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 3) (loop)))))))
+ (go (let loop () (gochan-select ((tick -> _) (gochan-select ((reply <- 4) (loop)))))))
 
  (thread-sleep! .105) ;; just a little past the last tick
  (gochan-close reply) ;; allow goroutines to exit (this is an antipattern in golang, hopefully ok here!)
