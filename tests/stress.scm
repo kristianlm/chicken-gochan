@@ -1,21 +1,23 @@
-;;; stress-test gochan. This is causing deadlocks after about 25000
-;;; messages (consistantly). We need to figure out what's going wrong here!
+;;; simple gochan stress-test
 (use gochan)
 
 (define chan (gochan 1024))
 
-(thread-start!
- (lambda () ;; simple echo
-   (gochan-for-each
-    chan (lambda (msg)
-           (gochan-send (car msg)
-                        (cdr msg))))))
+(go
+ (let loop ()
+   (gochan-select
+    ((chan -> msg)
+     (gochan-send (car msg) (cdr msg)) ;; simple echo
+     (loop)))))
 
-(let loop ((n 1000000))
+(define start (current-milliseconds))
+
+(let loop ((n 100000))
   (if (> n 0)
       (let ((reply (gochan 1024)))
         (gochan-send chan (cons reply n))
-        (assert (eq? n (gochan-receive reply)))
+        (assert (eq? n (gochan-recv reply)))
         (loop (sub1 n)))))
 
-
+(define elapsed (/ (- (current-milliseconds) start) 1000))
+(print "done at " (floor (/ 100000 elapsed)) " msg/s")
