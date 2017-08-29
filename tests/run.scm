@@ -156,7 +156,7 @@
        (gochan-select ((chan -> msg fail) (list msg fail))))
  (test "sending to closed channel sync"
        'my-fail-flag
-       (gochan-select ((chan <- 123 ok) ok)))
+       (gochan-select ((chan <- 123 fail) fail)))
 
  (test "gochan-select ignored body of closed chan recv" (void)
        (gochan-select ((chan -> msg) (error "chan closed, this should never run!"))))
@@ -246,8 +246,8 @@
    (list-tabulate
     20 (lambda (x)
          (gochan-select
-          ((chan1 -> msg ok) 1)
-          ((chan2 -> msg ok) 2)))))
+          ((chan1 -> msg) 1)
+          ((chan2 -> msg) 2)))))
 
  ;; check that we got data from both contestants
  (define num-chan1 (count (lambda (x) (eq? x 1)) origin))
