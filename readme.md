@@ -194,3 +194,4 @@ Starts and returns a new srfi-18 thread. Short for `(thread-start!
 - Add `go-map`, `go-fold` and friends (hopefully simple because we can also do [this](http://clojure.github.io/core.async/#clojure.core.async/map))
 - Support customizing buffering behaviour, like [core.async]'s [`dropping-buffer`](http://clojure.github.io/core.async/#clojure.core.async/dropping-buffer) and [`sliding-buffer`](http://clojure.github.io/core.async/#clojure.core.async/sliding-buffer) (harder!)
 - Add a priority option to `gochan-select*`?
+- Support cancelling timers
