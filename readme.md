@@ -124,11 +124,11 @@ To do a non-blocking receive, you can do the following:
 
     [procedure] (gochan-send chan msg)
 
-This is short for `(gochan-select ((chan <- msg)))`.
+This is short for `(gochan-select ((chan <- msg fail) (values  #f fail #t)))`.
 
     [procedure] (gochan-recv chan)
 
-This is short for `(gochan-select ((chan -> msg) msg))`.
+This is short for `(gochan-select ((chan -> msg fail) (values msg fail #t)))`.
 
     [procedure] (gochan-close chan [fail-flag])
 
