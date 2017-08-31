@@ -32,8 +32,7 @@ exceptions:
 - channels don't have any type information
 - sending to a channel that gets closed does not panic, it unblocks
   all senders immediately with the `fail` flag set to non-`#f`.
-- closing an already closed channel has no effect, and is not an error
-  (`gochan-close` is idempotent).
+- closing an already closed channel does not result in error.
 - `nil`-channels aren't supported, create new forever-blocking `(gochan 0)` instead.
 - Unlike in [Go], you can choose what channels to select on at runtime with `gochan-select*`
   
@@ -142,6 +141,9 @@ default `#t`. As this value is given to all receivers and senders of
 `chan`, the `fail-flag` can be used as a "broadcast"
 mechanism. `fail-flag` cannot be `#f` as that would indicate a
 successful message transaction.
+
+Closing an already closed channel will results in its `fail-flag`
+being updated.
 
     [procedure] (gochan-after duration/ms)
 

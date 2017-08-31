@@ -256,4 +256,13 @@
  (test "not just results from chan1" #t (< num-chan1 19))
  (test "not just results from chan2" #t (< num-chan2 19)))
 
+(test-group
+ "multiple gochan-close calls"
+
+ (define c (gochan 0))
+ (gochan-close c 1) (test "first gochan-close gets 1" 1 (gochan-select ((c -> m f) f)))
+ (gochan-close c 2) (test "first gochan-close gets 2" 2 (gochan-select ((c -> m f) f)))
+ (gochan-close c 3) (test "first gochan-close gets 3" 3 (gochan-select ((c -> m f) f)))
+ (gochan-close c 4) (test "first gochan-close gets 4" 4 (gochan-select ((c -> m f) f))))
+
 (test-exit)
