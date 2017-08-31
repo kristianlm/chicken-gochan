@@ -19,7 +19,7 @@ Currently supported:
 - receive and send switch (`gochan-select`)
 - buffered channels
 - timeouts as ordinary receive on a channel
-- closable channels
+- closable channels with close-reason (aka `fail-flag`)
 - load-balancing when multiple channels have data ready
 
 Source code can be found [here](https://github.com/Adellica/chicken-gochan).
