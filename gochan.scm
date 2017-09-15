@@ -471,9 +471,11 @@
                           (if (mutex-unlock! (gosem-mutex semaphore)
                                              (gosem-cv semaphore)
                                              timeout)
-                              ;; no timeout, semaphore must have been
-                              ;; signalled, data should be in semaphore
-                              (void)
+                              ;; no timeout, semaphore might have been
+                              ;; signalled, data might be in semaphore
+                              (unless (gosem-meta semaphore)
+                                (mutex-lock! (gosem-mutex semaphore))
+                                (%retry))
                               ;; timeout! if we're lucky, our semaphore
                               ;; won't be open after gotimer-signal.
                               (begin
@@ -486,7 +488,13 @@
                         ;; we don't have any timers, wait on cv forever
                         (begin (info "wait for data without timer")
                                (mutex-unlock! (gosem-mutex semaphore)
-                                              (gosem-cv semaphore)))))
+                                              (gosem-cv semaphore))
+                               ;; mutex-unlock! might be stopped by a signal,
+                               ;; retry if data is still unavailable
+                               (unless (gosem-meta semaphore)
+                                 (mutex-lock! (gosem-mutex semaphore))
+                                 (%retry))
+                          )))
                 ;; yey, semaphore has data already!
                 (begin (info "no need to wait, data already there")
                        (mutex-unlock! (gosem-mutex semaphore))))
