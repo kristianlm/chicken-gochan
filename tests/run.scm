@@ -265,4 +265,5 @@
  (gochan-close c 3) (test "first gochan-close gets 3" 3 (gochan-select ((c -> m f) f)))
  (gochan-close c 4) (test "first gochan-close gets 4" 4 (gochan-select ((c -> m f) f))))
 
+(include "signal-handler.scm")
 (test-exit)
