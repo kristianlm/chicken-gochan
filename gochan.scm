@@ -600,6 +600,9 @@
          (gochan-select* (gochan-select-alist form ...))
        (meta msg fail)))))
 
+(define (gochan-empty? chan)
+  (queue-empty? (gochan-buffer chan)))
+
 (define-record-printer gochan
   (lambda (x p)
     (display "#<gochan " p)
