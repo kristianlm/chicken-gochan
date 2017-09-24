@@ -22,7 +22,7 @@
 ;; signalled. this is ok because already-signalled subscribers just be
 ;; skipped (you cannot re-deliver data to a (not %gosem-open?)
 ;; semaphore).
-(define-record-type gosem
+(define-record-type <gosem>
   (make-gosem mutex cv data meta fail)
   gosem?
   (mutex gosem-mutex)
@@ -56,7 +56,7 @@
          (mutex-unlock! (gosem-mutex sem))
          #f)))
 
-(define-record-type gotimer
+(define-record-type <gotimer>
   (make-gotimer mutex receivers when data fail next)
   gotimer?
   (mutex     gotimer-mutex)
@@ -104,7 +104,7 @@
                (set! when (+ when duration:ms))
                (values when when #f)))))
 
-(define-record-type gochan
+(define-record-type <gochan>
   (make-gochan mutex cap buffer receivers senders closed)
   gochan?
   (mutex     gochan-mutex)

@@ -22,7 +22,7 @@
 
 (include "gochan.scm")
 
-(define-record-printer gochan
+(define-record-printer <gochan>
   (lambda (x p)
     (display "#<gochan " p)
     (if (gochan-closed x) (display "closed "))
@@ -34,7 +34,7 @@
     (display (gochan-cap x) p)
     (display ")>" p)))
 
-(define-record-printer gotimer
+(define-record-printer <gotimer>
   (lambda (x p)
     (display "#<gochan ⌛ " p)
     (display (if (gotimer-when x)
