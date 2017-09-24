@@ -7,7 +7,7 @@
      (only matchable match)
      (only extras random)
      (only data-structures list->queue queue->list sort
-           queue-add! queue-empty? queue-remove! queue-first queue-length))
+           queue-add! queue-empty? queue-remove! queue-length))
 
 
 (define (info . args) (void))
