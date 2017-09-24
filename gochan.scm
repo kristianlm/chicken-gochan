@@ -10,8 +10,8 @@
            queue-add! queue-empty? queue-remove! queue-length))
 
 
-(define (info . args) (void))
-;;(define (info . args) (apply print (cons (current-thread) (cons " " args))))
+(define (info . args) (values))
+;;(define (info . args) (for-each display (cons (current-thread) (cons " " args))) (newline))
 
 ;; multiple receives
 ;; multiple sends
@@ -311,7 +311,7 @@
           (let ((q (gotimer-receivers timer)))
             (let loop ()
               (if (queue-empty? q)
-                  (void)
+                  (values)
                   (let ((sub (queue-remove! q)))
                     (info "trying to signal " sub)
                     (if (semaphore-signal! (recv-subscription-sem sub)
@@ -334,7 +334,7 @@
       (let ((sub (queue-remove! q)))
         (unless (eq? semaphore (car sub))
           (queue-add! q sub)))
-      (loop (sub1 n)))))
+      (loop (- n 1)))))
 
 ;; run through the channels' semaphores (queue) and remove any
 ;; instances of `semaphore`.
@@ -526,7 +526,9 @@
 
 ;; close channel. unlike in go, this operation is idempotent (and
 ;; hopefully that's a good idea).
-(define (gochan-close chan #!optional (fail-flag #t))
+(define (gochan-close chan . args)
+
+  (define fail-flag (if (pair? args) (car args) #t))
 
   (if (eq? #f fail-flag)
       (error "fail-flag for closed channel cannot be #f"))
@@ -565,7 +567,7 @@
 (define-syntax go
   (syntax-rules ()
     ((_ body ...)
-     (thread-start! (lambda () body ...)))))
+     (thread-start! (make-thread (lambda () body ...))))))
 
 ;; turn gochan-select form into `((,chan1 . ,proc1) (,chan2 . ,proc2) ...)
 (define-syntax gochan-select-alist
