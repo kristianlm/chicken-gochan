@@ -1,12 +1,13 @@
 # chicken-gochan
 
  [Chicken Scheme]: http://call-cc.org/
+ [Chibi Scheme]: http://synthcode.com/wiki/chibi-scheme
  [Go]: http://golang.org/
  [core.async]: https://github.com/clojure/core.async
 
-[Go]-inspired channels for [Chicken Scheme]. Essentially thread-safe
-fifo queues that are useful for thread communication and
-synchronization.
+[Go]-inspired channels for [Chicken Scheme] ([Chibi Scheme] might work
+too). Essentially thread-safe fifo queues that are useful for thread
+communication and synchronization.
 
 ## Dependencies
 
