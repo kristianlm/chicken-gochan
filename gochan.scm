@@ -199,7 +199,6 @@
 (define (gochan-signal-sender/subscribe chan %sem meta)
   (if (eq? #f meta) (error "metadata cannot be #f (in gochan-select* alist)"))
   (mutex-lock! (gochan-mutex chan))
-  ;; TODO: if closed, signal receiver immediately
 
   (if (> (queue-length (gochan-buffer chan)) 0)
       ;; data already in buffer! pop buffer and put data in our
