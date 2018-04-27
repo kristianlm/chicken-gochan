@@ -1,5 +1,8 @@
 ;; test gochan in combination with posix signal handlers
-(use gochan posix test)
+(import gochan test
+	(only (chicken process signal)
+	      signal-handler signal/int signal/usr1 signal/usr2)
+	(only (chicken process-context posix) current-process-id))
 
 (define c (gochan 0))
 

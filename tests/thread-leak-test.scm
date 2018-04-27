@@ -4,7 +4,7 @@
 ;;; gets thrown away is garbage-collected. this may be
 ;;; useful/essential when spawning many (go ...) waiting for a gochan
 ;;; that no other thread has a reference to.
-(use gochan)
+(import gochan)
 
 (define (go-map c proc error)
   (define c (gochan)))

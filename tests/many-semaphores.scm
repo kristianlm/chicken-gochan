@@ -6,7 +6,7 @@
 ;; we're good. to make it run out-of-memory quicker, try:
 ;;
 ;; csi -s tests/many-semaphores.scm -:h32M
-(use gochan)
+(import gochan)
 
 (define chan (gochan 0))
 (define to (gochan-tick 0))

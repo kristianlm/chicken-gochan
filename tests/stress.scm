@@ -1,5 +1,5 @@
 ;;; simple gochan stress-test
-(use gochan)
+(import gochan)
 
 (define chan (gochan 1024))
 

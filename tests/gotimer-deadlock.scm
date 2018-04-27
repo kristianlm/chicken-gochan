@@ -17,7 +17,7 @@
 ;; 	 <-d; <-d; <-d;
 ;; }
 
-(use gochan)
+(import gochan)
 
 (define chan (gochan-after 1000))
 

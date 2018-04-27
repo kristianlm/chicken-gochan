@@ -1,0 +1,10 @@
+;;-*- scheme -*-
+((author "Adellica AS")
+ (synopsis "golang channels in CHICKEN")
+ (license "BSD")
+ (dependencies matchable)
+ (test-dependencies test)
+ (category hell)
+ (components
+  (extension gochan
+	     (source "chicken-module.scm"))))

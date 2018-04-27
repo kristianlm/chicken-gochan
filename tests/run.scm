@@ -1,5 +1,6 @@
-(use gochan test
-     (only srfi-1 list-tabulate))
+(import gochan test
+	(only srfi-18 thread-start! thread-yield! thread-sleep! thread-state thread-join!)
+	(only srfi-1 list-tabulate make-list count))
 ;;(define-syntax test (syntax-rules () ((_ body ...) (begin body ...))))
 
 ;; todo:

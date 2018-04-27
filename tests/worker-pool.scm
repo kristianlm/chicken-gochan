@@ -1,7 +1,7 @@
 ;; worker-pools example, based on https://gobyexample.com/worker-pools
 ;; time csi -s worker-pool.scm tells us we spend 1 second doing a
 ;; 5-second job.
-(use gochan miscmacros srfi-1)
+(import gochan miscmacros srfi-1)
 
 (define (info . args) (apply print (cons (current-thread) (cons " " args))))
 

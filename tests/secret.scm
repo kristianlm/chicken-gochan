@@ -16,7 +16,7 @@
 ;;   clicked before. For example a combination like “BBABBABA” is ok
 ;;   as long as “ABBABA” is clicked within 5 seconds.
 
-(use gochan parley)
+(import gochan parley)
 
 (define c (gochan 0))
 

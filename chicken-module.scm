@@ -13,12 +13,15 @@
                 gochan-tick
                 gotimer ;; undocumented, but maybe useful, see comments
                 )
-(import chicken scheme)
-(use srfi-18
-     (only matchable match)
-     (only extras random)
-     (only data-structures list->queue queue->list sort
-           queue-add! queue-empty? queue-remove! queue-length))
+
+(import (scheme)
+	(chicken base)
+	srfi-18
+	(only (queues) list->queue queue->list queue-add! queue-empty? queue-remove! queue-length)
+	(only (matchable) match)
+	(only (chicken time) current-milliseconds)
+	(only (chicken random) pseudo-random-integer)
+	(only (chicken sort) sort))
 
 (include "gochan.scm")
 

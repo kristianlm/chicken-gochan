@@ -1,4 +1,4 @@
-(use gochan)
+(import gochan)
 
 (define c (gochan-tick 1000))
 

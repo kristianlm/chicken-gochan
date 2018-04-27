@@ -32,7 +32,7 @@
 ;;     }
 ;;     return
 
-(use gochan)
+(import gochan)
 
 (define (fakeSearch q replica)
   (thread-sleep! (/ (random 100) 1000))

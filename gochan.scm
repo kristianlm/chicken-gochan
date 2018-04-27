@@ -374,7 +374,7 @@
         ;; probably much faster ways to do this, though...
         (chans (map cdr
                     (sort (map (lambda (spec)
-                                 (cons (/ (random 256) 256.0) spec))
+                                 (cons (/ (pseudo-random-integer 256) 256.0) spec))
                                chans)
                           (lambda (a b) (< (car a) (car b)))))))
     ;; keep our semaphore locked while we check channels for data
