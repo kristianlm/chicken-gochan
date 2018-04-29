@@ -3,7 +3,7 @@
  (synopsis "golang channels in CHICKEN")
  (license "BSD")
  (dependencies matchable)
- (test-dependencies test)
+ (test-dependencies test srfi-1 miscmacros parley nrepl)
  (category hell)
  (components
   (extension gochan

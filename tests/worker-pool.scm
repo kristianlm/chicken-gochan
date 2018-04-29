@@ -1,7 +1,10 @@
 ;; worker-pools example, based on https://gobyexample.com/worker-pools
 ;; time csi -s worker-pool.scm tells us we spend 1 second doing a
 ;; 5-second job.
-(import gochan miscmacros srfi-1)
+(import gochan
+	miscmacros
+	(only (chicken random) pseudo-random-integer)
+	srfi-18 srfi-1)
 
 (define (info . args) (apply print (cons (current-thread) (cons " " args))))
 
@@ -9,8 +12,8 @@
   (let loop ()
     (gochan-select
      ((jobs -> job) ;; no fail-flag here means we break (loop) when jobs is closed
-      (thread-sleep! (/ (random 1000) 1000))
-      (if (= 0 (random 100))
+      (thread-sleep! (/ (pseudo-random-integer 1000) 1000))
+      (if (= 0 (pseudo-random-integer 100))
           (info "crash!")
           (gochan-send results 'my-result))
       (loop))))

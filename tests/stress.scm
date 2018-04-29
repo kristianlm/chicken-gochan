@@ -1,5 +1,5 @@
 ;;; simple gochan stress-test
-(import gochan)
+(import gochan (only (chicken time) current-milliseconds))
 
 (define chan (gochan 1024))
 

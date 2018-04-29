@@ -1,5 +1,7 @@
 ;; test gochan in combination with posix signal handlers
 (import gochan test
+	(only srfi-18 thread-start! thread-sleep!)
+	(only (chicken process) process-signal process-fork)
 	(only (chicken process signal)
 	      signal-handler signal/int signal/usr1 signal/usr2)
 	(only (chicken process-context posix) current-process-id))

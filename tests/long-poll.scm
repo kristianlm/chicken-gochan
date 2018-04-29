@@ -7,7 +7,9 @@
 ;;; everyone. this means we can use closed gochans as
 ;;; "broadcasts". it's a neat little trick.
 ;;;
-(import spiffy gochan parley nrepl)
+(import spiffy gochan parley
+	(only (chicken string) conc)
+	nrepl)
 
 (go (print "nrepl listening on port 1234")
     (nrepl 1234))
