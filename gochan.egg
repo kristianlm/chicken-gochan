@@ -2,7 +2,7 @@
 ((author "Adellica AS")
  (synopsis "golang channels in CHICKEN")
  (license "BSD")
- (dependencies matchable)
+ (dependencies matchable srfi-18 queues)
  (test-dependencies test srfi-1 miscmacros parley nrepl)
  (category hell)
  (components
