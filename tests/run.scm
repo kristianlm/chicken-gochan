@@ -1,5 +1,7 @@
 (import gochan test
 	(only srfi-18 thread-start! thread-yield! thread-sleep! thread-state thread-join!)
+        (only (chicken sort) sort)
+        (only (chicken time) current-milliseconds)
 	(only srfi-1 list-tabulate make-list count))
 ;;(define-syntax test (syntax-rules () ((_ body ...) (begin body ...))))
 
