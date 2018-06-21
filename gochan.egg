@@ -7,4 +7,4 @@
  (category hell)
  (components
   (extension gochan
-	     (source "chicken-module.scm"))))
+	     (source "chicken-module5.scm"))))

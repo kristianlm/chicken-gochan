@@ -1,0 +1,7 @@
+;;-*- scheme -*-
+((author "Adellica AS")
+ (synopsis "golang channels in CHICKEN")
+ (license "BSD")
+ (depends matchable)
+ (test-depends test)
+ (category hell))

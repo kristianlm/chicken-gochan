@@ -1,0 +1,6 @@
+;; -*- scheme -*-
+
+(compile -s chicken-module4.scm -J -o gochan.so)
+(compile -s gochan.import.scm)
+
+(install-extension 'gochan '("gochan.so" "gochan.import.so"))
