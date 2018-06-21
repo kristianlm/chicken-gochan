@@ -433,7 +433,8 @@
                       (begin
                         (gosem-meta-set! semaphore else-thunk)
                         (gosem-data-set! semaphore #f)
-                        (gosem-fail-set! semaphore #f))
+                        (gosem-fail-set! semaphore #f)
+                        (mutex-unlock! (gosem-mutex semaphore)))
                       ;; no data immediately available on any of the
                       ;; channels, so we need to wait for somebody else
                       ;; to signal us.
