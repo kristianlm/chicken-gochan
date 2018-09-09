@@ -4,7 +4,7 @@
 ;; Copyright (c) 2017 Kristian Lein-Mathisen.  All rights reserved.
 ;; License: BSD
 
-(define (info . args) (values))
+(define (info . args) #f)
 ;;(define (info . args) (for-each display (cons (current-thread) (cons " " args))) (newline))
 
 ;; multiple receives
