@@ -1,6 +1,7 @@
 ;; -*- scheme -*-
 (repo git    "git://github.com/Adellica/chicken-gochan.git")
 (uri targz "https://github.com/Adellica/chicken-gochan/tarball/{egg-release}")
+(release "5.2.9")
 (release "5.2.8")
 (release "5.2.7")
 (release "5.2.6")
