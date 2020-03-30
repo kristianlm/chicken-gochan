@@ -151,9 +151,9 @@ being updated.
 Returns a `gochan` that will "send" a single message after
 `duration/ms` milliseconds of its creation. The message is the
 `(current-milliseconds)` value at the time of the timeout (not when
-the message was received). Receiving more than once on an
-`gochan-after` channel will block indefinitely or deadlock the second
-time.
+the message was received). After the timeout message has been
+delivered once, subsequent receives will immediately report the
+channel as closed.
 
 ```scheme
 (gochan-select

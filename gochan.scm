@@ -286,7 +286,13 @@
                           (make-recv-subscription %sem meta))
               (mutex-unlock! (gotimer-mutex chan))
               #t)))
-      (begin (mutex-unlock! (gotimer-mutex chan))
+      ;; the gotimer is indicating it will never trigger again.
+      ;; assuming it's never useful to forever be waiting for it, we
+      ;; indicate it has closed.
+      (begin (gosem-meta-set! %sem meta) ;; <-- also closes %sem
+             (gosem-data-set! %sem (gotimer-data chan))
+             (gosem-fail-set! %sem (or (gotimer-fail chan) #t))
+             (mutex-unlock! (gotimer-mutex chan))
              #f)))
 
 ;; if timer has expired, signal a single receiver that `timer` has

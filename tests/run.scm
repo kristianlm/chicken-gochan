@@ -96,7 +96,10 @@
  (test "timeout order 1" 'to1 (gochan-recv reply))
  (test "timeout order 2" 'to2 (gochan-recv reply))
  (define duration (- (current-milliseconds) start))
- (test "200ms to timeout took <220ms " #t (begin (print* "(" duration ")")(< duration 220))))
+ (test "200ms to timeout took <220ms " #t (begin (print* "(" duration ")")(< duration 220)))
+
+ (test "to1 post-timeout closed" #t (gochan-select ((to1 -> x closed?) closed?)))
+ (test "to2 post-timeout closed" #t (gochan-select ((to2 -> x closed?) closed?))))
 
 (test-group
  "timers: each gochan-tick gets consumed by only one recv"
