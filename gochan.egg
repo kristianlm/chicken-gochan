@@ -7,4 +7,5 @@
  (category hell)
  (components
   (extension gochan
-	     (source "chicken-module5.scm"))))
+	     (source "chicken-module5.scm")
+             (source-dependencies "gochan.scm" "gochan-record-printer.scm"))))
