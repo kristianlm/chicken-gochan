@@ -1,5 +1,5 @@
 ;;-*- scheme -*-
-((author "Adellica AS")
+((author "Kristian Lein-Mathisen")
  (synopsis "golang channels in CHICKEN")
  (license "BSD")
  (dependencies matchable srfi-18 queues)
